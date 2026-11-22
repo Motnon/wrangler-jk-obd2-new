@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Wrangler OBD</string>
+    <string name="nav_cockpit">Cockpit</string>
+    <string name="nav_scanner">DTC Scan</string>
+    <string name="nav_terminal">Terminal</string>
+    <string name="nav_garage">Garage</string>
+    <string name="status_disconnected">NO ECU LINK</string>
+    <string name="status_connecting">PAIRING ELM327…</string>
+    <string name="status_connected">ECU ONLINE</string>
+    <string name="action_connect_adapter">Connect OBD-II</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="action_zero_inclinometer">Zero Level</string>
+    <string name="action_read_dtcs">Scan ECU Codes</string>
+    <string name="action_clear_dtcs">Clear MIL / DTCs</string>
+    <string name="action_save_snapshot">Save Snapshot</string>
+    <string name="cd_hero_banner">Jeep Wrangler JK parked on mountain ridge at dusk</string>
+    <string name="cd_connect_bluetooth">Connect Bluetooth OBD-II adapter</string>
+    <string name="cd_clear_codes">Clear trouble codes</string>
+    <string name="cd_send_command">Send OBD-II command</string>
+</resources>
