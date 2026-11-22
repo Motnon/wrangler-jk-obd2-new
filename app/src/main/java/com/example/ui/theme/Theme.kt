@@ -6,9 +6,119 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.obd.AppVisualTheme
 
-private val WranglerDarkColorScheme = darkColorScheme(
+@Immutable
+data class RaceClusterPalette(
+    val boardBg: Color,
+    val surface: Color,
+    val podSurface: Color,
+    val bezelBorder: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val zone1: Color,
+    val zone2: Color,
+    val zone3: Color,
+    val zone4: Color,
+    val zone5: Color,
+    val accentBlue: Color,
+    val accentViolet: Color,
+    val isNightMode: Boolean
+)
+
+val NeonCyanAmberRacePalette = RaceClusterPalette(
+    boardBg = RaceCarbonBg,
+    surface = RaceClusterSurface,
+    podSurface = RacePodSurface,
+    bezelBorder = RaceBezelBorder,
+    textPrimary = TextPrimaryDark,
+    textSecondary = TextSecondaryDark,
+    zone1 = RaceCyan,
+    zone2 = RaceGreen,
+    zone3 = RaceYellow,
+    zone4 = RaceOrange,
+    zone5 = RaceRed,
+    accentBlue = RaceBlue,
+    accentViolet = RaceViolet,
+    isNightMode = false
+)
+
+val RacingRedRacePalette = RaceClusterPalette(
+    boardBg = RacingRedBg,
+    surface = RacingRedSurface,
+    podSurface = RacingRedCard,
+    bezelBorder = RacingRedBorder,
+    textPrimary = TextPrimaryDark,
+    textSecondary = RacingSilver,
+    zone1 = RacingSilver,
+    zone2 = RacingHotOrange,
+    zone3 = RaceYellow,
+    zone4 = RacingRedPrimary,
+    zone5 = RaceRed,
+    accentBlue = RacingHotOrange,
+    accentViolet = RacingRedPrimary,
+    isNightMode = false
+)
+
+val DeepGreenRacePalette = RaceClusterPalette(
+    boardBg = DeepGreenBg,
+    surface = DeepGreenSurface,
+    podSurface = DeepGreenCard,
+    bezelBorder = DeepGreenBorder,
+    textPrimary = TextPrimaryDark,
+    textSecondary = TextSecondaryDark,
+    zone1 = DeepGreenPrimary,
+    zone2 = DeepGreenLime,
+    zone3 = DeepGreenGold,
+    zone4 = OverlandAmber,
+    zone5 = FaultCrimson,
+    accentBlue = TrailSage,
+    accentViolet = DeepGreenLime,
+    isNightMode = false
+)
+
+val ClassicWhiteRacePalette = RaceClusterPalette(
+    boardBg = DaylightBg,
+    surface = DaylightSurface,
+    podSurface = DaylightCard,
+    bezelBorder = DaylightBorder,
+    textPrimary = TextPrimaryLight,
+    textSecondary = TextSecondaryLight,
+    zone1 = ClassicBlueAccent,
+    zone2 = TrailSageLight,
+    zone3 = ClassicAmberAccent,
+    zone4 = OverlandAmberLight,
+    zone5 = FaultCrimsonLight,
+    accentBlue = ClassicBlueAccent,
+    accentViolet = TextPrimaryLight,
+    isNightMode = false
+)
+
+val NightVisionRacePalette = RaceClusterPalette(
+    boardBg = NightBg,
+    surface = NightSurface,
+    podSurface = NightCard,
+    bezelBorder = NightBorder,
+    textPrimary = NightTextPrimary,
+    textSecondary = NightTextSecondary,
+    zone1 = NightRedMuted,
+    zone2 = NightRedSecondary,
+    zone3 = NightRedPrimary,
+    zone4 = NightRedPrimary,
+    zone5 = FaultCrimson,
+    accentBlue = NightRedSecondary,
+    accentViolet = NightRedPrimary,
+    isNightMode = true
+)
+
+val LocalRacePalette = staticCompositionLocalOf { NeonCyanAmberRacePalette }
+
+private val NeonCyanAmberColorScheme = darkColorScheme(
     primary = OverlandAmber,
     onPrimary = ObsidianBg,
     primaryContainer = AmberDim,
@@ -17,7 +127,7 @@ private val WranglerDarkColorScheme = darkColorScheme(
     onSecondary = ObsidianBg,
     secondaryContainer = SageDim,
     onSecondaryContainer = TrailSage,
-    tertiary = SteelBlue,
+    tertiary = RaceCyan,
     onTertiary = ObsidianBg,
     background = ObsidianBg,
     onBackground = TextPrimaryDark,
@@ -36,16 +146,72 @@ private val WranglerDarkColorScheme = darkColorScheme(
     onErrorContainer = FaultCrimson
 )
 
-private val WranglerLightColorScheme = lightColorScheme(
-    primary = OverlandAmberLight,
+private val RacingRedColorScheme = darkColorScheme(
+    primary = RacingRedPrimary,
+    onPrimary = TextPrimaryDark,
+    primaryContainer = RacingRedDim,
+    onPrimaryContainer = RacingRedPrimary,
+    secondary = RacingHotOrange,
+    onSecondary = RacingRedBg,
+    secondaryContainer = AmberDim,
+    onSecondaryContainer = RacingHotOrange,
+    tertiary = RacingSilver,
+    onTertiary = RacingRedBg,
+    background = RacingRedBg,
+    onBackground = TextPrimaryDark,
+    surface = RacingRedSurface,
+    onSurface = TextPrimaryDark,
+    surfaceVariant = RacingRedCard,
+    onSurfaceVariant = RacingSilver,
+    surfaceContainerLow = RacingRedSurface,
+    surfaceContainer = RacingRedCard,
+    surfaceContainerHigh = RacingRedCard,
+    outline = RacingRedBorder,
+    outlineVariant = RacingRedBorder,
+    error = FaultCrimson,
+    onError = TextPrimaryDark,
+    errorContainer = CrimsonDim,
+    onErrorContainer = FaultCrimson
+)
+
+private val DeepGreenColorScheme = darkColorScheme(
+    primary = DeepGreenPrimary,
+    onPrimary = DeepGreenBg,
+    primaryContainer = DeepGreenDim,
+    onPrimaryContainer = DeepGreenPrimary,
+    secondary = DeepGreenLime,
+    onSecondary = DeepGreenBg,
+    secondaryContainer = SageDim,
+    onSecondaryContainer = DeepGreenLime,
+    tertiary = DeepGreenGold,
+    onTertiary = DeepGreenBg,
+    background = DeepGreenBg,
+    onBackground = TextPrimaryDark,
+    surface = DeepGreenSurface,
+    onSurface = TextPrimaryDark,
+    surfaceVariant = DeepGreenCard,
+    onSurfaceVariant = TextSecondaryDark,
+    surfaceContainerLow = DeepGreenSurface,
+    surfaceContainer = DeepGreenCard,
+    surfaceContainerHigh = DeepGreenCard,
+    outline = DeepGreenBorder,
+    outlineVariant = DeepGreenBorder,
+    error = FaultCrimson,
+    onError = TextPrimaryDark,
+    errorContainer = CrimsonDim,
+    onErrorContainer = FaultCrimson
+)
+
+private val ClassicWhiteColorScheme = lightColorScheme(
+    primary = ClassicBlueAccent,
     onPrimary = DaylightSurface,
-    primaryContainer = AmberContainerLight,
-    onPrimaryContainer = OnAmberContainerLight,
-    secondary = TrailSageLight,
+    primaryContainer = DaylightCard,
+    onPrimaryContainer = TextPrimaryLight,
+    secondary = ClassicAmberAccent,
     onSecondary = DaylightSurface,
-    secondaryContainer = SageContainerLight,
-    onSecondaryContainer = OnSageContainerLight,
-    tertiary = SteelBlue,
+    secondaryContainer = AmberContainerLight,
+    onSecondaryContainer = OnAmberContainerLight,
+    tertiary = TrailSageLight,
     background = DaylightBg,
     onBackground = TextPrimaryLight,
     surface = DaylightSurface,
@@ -63,6 +229,34 @@ private val WranglerLightColorScheme = lightColorScheme(
     onErrorContainer = OnCrimsonContainerLight
 )
 
+private val NightVisionColorScheme = darkColorScheme(
+    primary = NightRedPrimary,
+    onPrimary = NightBg,
+    primaryContainer = NightRedDim,
+    onPrimaryContainer = NightTextPrimary,
+    secondary = NightRedSecondary,
+    onSecondary = NightBg,
+    secondaryContainer = NightCard,
+    onSecondaryContainer = NightTextPrimary,
+    tertiary = NightRedMuted,
+    onTertiary = NightTextPrimary,
+    background = NightBg,
+    onBackground = NightTextPrimary,
+    surface = NightSurface,
+    onSurface = NightTextPrimary,
+    surfaceVariant = NightCard,
+    onSurfaceVariant = NightTextSecondary,
+    surfaceContainerLow = NightSurface,
+    surfaceContainer = NightCard,
+    surfaceContainerHigh = NightElevated,
+    outline = NightBorder,
+    outlineVariant = NightBorder,
+    error = NightRedPrimary,
+    onError = NightBg,
+    errorContainer = NightRedDim,
+    onErrorContainer = NightTextPrimary
+)
+
 private val WranglerShapes = Shapes(
     extraSmall = RoundedCornerShape(6.dp),
     small = RoundedCornerShape(10.dp),
@@ -73,15 +267,38 @@ private val WranglerShapes = Shapes(
 
 @Composable
 fun WranglerObdTheme(
-    darkTheme: Boolean = true,
+    visualTheme: AppVisualTheme = AppVisualTheme.NEON_CYAN_AMBER,
+    isNightMode: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) WranglerDarkColorScheme else WranglerLightColorScheme
+    val colorScheme = if (isNightMode) {
+        NightVisionColorScheme
+    } else {
+        when (visualTheme) {
+            AppVisualTheme.NEON_CYAN_AMBER -> NeonCyanAmberColorScheme
+            AppVisualTheme.RACING_RED -> RacingRedColorScheme
+            AppVisualTheme.DEEP_GREEN -> DeepGreenColorScheme
+            AppVisualTheme.CLASSIC_WHITE -> ClassicWhiteColorScheme
+        }
+    }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        shapes = WranglerShapes,
-        content = content
-    )
+    val racePalette = if (isNightMode) {
+        NightVisionRacePalette
+    } else {
+        when (visualTheme) {
+            AppVisualTheme.NEON_CYAN_AMBER -> NeonCyanAmberRacePalette
+            AppVisualTheme.RACING_RED -> RacingRedRacePalette
+            AppVisualTheme.DEEP_GREEN -> DeepGreenRacePalette
+            AppVisualTheme.CLASSIC_WHITE -> ClassicWhiteRacePalette
+        }
+    }
+
+    CompositionLocalProvider(LocalRacePalette provides racePalette) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            shapes = WranglerShapes,
+            content = content
+        )
+    }
 }

@@ -54,6 +54,7 @@ import com.example.obd.RigPreferences
 import com.example.obd.TerminalDirection
 import com.example.obd.TerminalEntry
 import com.example.obd.UnitSystem
+import com.example.obd.applyCalibratedSpeedKph
 import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.OverlandAmber
@@ -73,7 +74,7 @@ fun TerminalScreen(
 ) {
     var commandInput by remember { mutableStateOf("") }
     val presetCommands = remember {
-        listOf("ATZ", "ATI", "ATRV", "0100", "0105", "010C", "0142", "03", "0902")
+        listOf("ATZ", "ATI", "ATRV", "0100", "0105", "010C", "012F", "0142", "03", "0902")
     }
 
     Column(
@@ -212,8 +213,17 @@ fun TerminalScreen(
 
                 items(JkDiagnosticLibrary.supportedPids, key = { it.pidHex }) { pid ->
                     val isImperial = rigPrefs.unitSystem == UnitSystem.IMPERIAL
-                    val formattedVal = formatLivePidValue(pid.pidHex, telemetry, isImperial)
-                    val unitLabel = if (isImperial) pid.unitImperial else pid.unitMetric
+                    val formattedVal = formatLivePidValue(
+                        pidHex = pid.pidHex,
+                        t = telemetry,
+                        imperial = isImperial,
+                        speedFactor = rigPrefs.speedCalibrationFactor
+                    )
+                    val unitLabel = when (pid.pidHex) {
+                        "0105", "010F", "0146" -> "°C"
+                        "010D" -> "KPH"
+                        else -> if (isImperial) pid.unitImperial else pid.unitMetric
+                    }
 
                     Surface(
                         shape = MaterialTheme.shapes.small,
@@ -324,19 +334,25 @@ fun TerminalScreen(
     }
 }
 
-private fun formatLivePidValue(pidHex: String, t: LiveTelemetry, imperial: Boolean): String {
+private fun formatLivePidValue(
+    pidHex: String,
+    t: LiveTelemetry,
+    imperial: Boolean,
+    speedFactor: Float
+): String {
     return when (pidHex) {
         "010C" -> t.rpm?.toString() ?: "--"
-        "0105" -> t.coolantCelsius?.let { if (imperial) "${((it * 9f / 5f) + 32f).roundToInt()}" else "$it" } ?: "--"
+        "0105" -> t.coolantCelsius?.toString() ?: "--"
         "ATRV" -> t.batteryVolts?.let { String.format(Locale.US, "%.1f", it) } ?: "--"
-        "010D" -> t.speedKmh?.let { if (imperial) "${(it * 0.621371f).roundToInt()}" else "$it" } ?: "--"
-        "010F" -> t.intakeAirCelsius?.let { if (imperial) "${((it * 9f / 5f) + 32f).roundToInt()}" else "$it" } ?: "--"
+        "010D" -> applyCalibratedSpeedKph(t.speedKmh, speedFactor)?.toString() ?: "--"
+        "010F" -> t.intakeAirCelsius?.toString() ?: "--"
         "0111" -> t.throttlePercent?.let { "${it.roundToInt()}" } ?: "--"
         "0104" -> t.engineLoadPercent?.let { "${it.roundToInt()}" } ?: "--"
         "010B" -> t.manifoldKpa?.let { if (imperial) String.format(Locale.US, "%.1f", it * 0.145038f) else "$it" } ?: "--"
         "0106" -> t.shortTermFuelTrimB1?.let { String.format(Locale.US, "%+.1f", it) } ?: "--"
         "0107" -> t.longTermFuelTrimB1?.let { String.format(Locale.US, "%+.1f", it) } ?: "--"
-        "0146" -> t.ambientAirCelsius?.let { if (imperial) "${((it * 9f / 5f) + 32f).roundToInt()}" else "$it" } ?: "--"
+        "012F" -> t.fuelLevelPercent?.let { "${it.roundToInt()}" } ?: "--"
+        "0146" -> t.ambientAirCelsius?.toString() ?: "--"
         "0101" -> if (t.lastUpdatedMs > 0L) "${t.ecuDtcCount} (${if (t.milOn) "MIL" else "OK"})" else "--"
         else -> "--"
     }

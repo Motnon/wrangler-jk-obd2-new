@@ -34,6 +34,15 @@ class ExampleRobolectricTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("ecu_connect_button").assertIsDisplayed()
 
+        // Navigate to Gauges tab
+        composeRule.onNodeWithTag("nav_tab_gauges").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gauge_fuel_level").assertIsDisplayed()
+        composeRule.onNodeWithTag("gauge_speed").assertIsDisplayed()
+        composeRule.onNodeWithTag("gauge_rpm").assertIsDisplayed()
+        composeRule.onNodeWithTag("gauge_coolant").assertIsDisplayed()
+        composeRule.onNodeWithTag("zero_inclinometer_button").assertIsDisplayed()
+
         // Navigate to DTC Scan tab and filter for P0456
         composeRule.onNodeWithTag("nav_tab_scanner").performClick()
         composeRule.waitForIdle()

@@ -1,0 +1,491 @@
+package com.example.ui.screens
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.OpenWith
+import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.obd.BluetoothDeviceItem
+import com.example.obd.ConnectionStatus
+import com.example.obd.JkEngineProfile
+import com.example.obd.LiveTelemetry
+import com.example.obd.RaceLayoutDefaults
+import com.example.obd.RaceWindowGeometry
+import com.example.obd.RaceWindowId
+import com.example.obd.RigPreferences
+import com.example.obd.TrailSensorState
+import com.example.obd.UnitSystem
+import com.example.obd.VinInfo
+import com.example.obd.applyCalibratedSpeedKph
+import com.example.ui.components.AdjustableRaceWindow
+import com.example.ui.components.EcuStatusBanner
+import com.example.ui.components.RaceCircularArcPod
+import com.example.ui.components.RaceSegmentedBarGauge
+import com.example.ui.components.RaceSessionPeaksCard
+import com.example.ui.components.RaceShiftLightBar
+import com.example.ui.components.RaceSpeedometerDial
+import com.example.ui.components.RaceThrottleBarCard
+import com.example.ui.components.TrailInclinometerCard
+import com.example.ui.theme.ChakraPetchFontFamily
+import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.LocalRacePalette
+import java.util.Locale
+import kotlin.math.roundToInt
+
+@Composable
+fun RaceScreen(
+    connectionStatus: ConnectionStatus,
+    connectedDevice: BluetoothDeviceItem?,
+    statusMessage: String,
+    vinInfo: VinInfo?,
+    telemetry: LiveTelemetry,
+    sensorState: TrailSensorState,
+    rigPrefs: RigPreferences,
+    onOpenBluetoothSheet: () -> Unit,
+    onDisconnect: () -> Unit,
+    onTareInclinometer: () -> Unit,
+    onSaveRaceLayout: (Map<RaceWindowId, RaceWindowGeometry>) -> Unit,
+    onResetRaceLayout: () -> Unit,
+    onSetRaceLayoutLocked: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalRacePalette.current
+    val isImperialMap = rigPrefs.unitSystem == UnitSystem.IMPERIAL
+
+    val calibratedSpeedKph = applyCalibratedSpeedKph(telemetry.speedKmh, rigPrefs.speedCalibrationFactor)
+
+    var peakRpm by remember { mutableStateOf<Int?>(null) }
+    var peakSpeedKph by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(telemetry.rpm, calibratedSpeedKph) {
+        telemetry.rpm?.let { r ->
+            if (peakRpm == null || r > peakRpm!!) peakRpm = r
+        }
+        calibratedSpeedKph?.let { s ->
+            if (peakSpeedKph == null || s > peakSpeedKph!!) peakSpeedKph = s
+        }
+    }
+
+    val windowMap = remember {
+        mutableStateMapOf<RaceWindowId, RaceWindowGeometry>().apply {
+            putAll(RaceLayoutDefaults.decode(rigPrefs.raceLayoutSpec))
+        }
+    }
+
+    LaunchedEffect(rigPrefs.raceLayoutSpec) {
+        val decoded = RaceLayoutDefaults.decode(rigPrefs.raceLayoutSpec)
+        windowMap.clear()
+        windowMap.putAll(decoded)
+    }
+
+    val maxRpmScale = when (rigPrefs.engineProfile) {
+        JkEngineProfile.PENTASTAR_3_6 -> 7000f
+        JkEngineProfile.EGH_3_8 -> 6000f
+        JkEngineProfile.CRD_2_8 -> 5000f
+    }
+    val rpmRedline = when (rigPrefs.engineProfile) {
+        JkEngineProfile.PENTASTAR_3_6 -> 6400f
+        JkEngineProfile.EGH_3_8 -> 5500f
+        JkEngineProfile.CRD_2_8 -> 4200f
+    }
+    val isRedline = telemetry.rpm != null && telemetry.rpm.toFloat() >= rpmRedline
+
+    val speedDisplayValue: Float? = calibratedSpeedKph?.toFloat()
+    val speedMax = 200f
+    val speedWarn = 155f
+    val speedTickCount = 6
+    val speedUnit = "KPH"
+    val speedDisplayText = calibratedSpeedKph?.toString() ?: "--"
+    val rpmText = telemetry.rpm?.let { String.format(Locale.US, "%,d", it) } ?: "--"
+
+    // Coolant temperature is always Celsius (°C)
+    val coolantDisplayValue: Float? = telemetry.coolantCelsius?.toFloat()
+    val coolantMin = 0f
+    val coolantMax = 130f
+    val coolantWarn = rigPrefs.coolantWarnCelsius.toFloat()
+    val tempUnit = "°C"
+    val coolantFraction = coolantDisplayValue?.let {
+        ((it - coolantMin) / (coolantMax - coolantMin)).coerceIn(0f, 1f)
+    }
+    val isCoolantOverheat = coolantDisplayValue != null && coolantDisplayValue >= coolantWarn
+
+    val fuelFraction = telemetry.fuelLevelPercent?.let { (it / 100f).coerceIn(0f, 1f) }
+    val isLowFuel = telemetry.fuelLevelPercent != null && telemetry.fuelLevelPercent <= 15f
+
+    val mapDisplayValue: Float? = telemetry.manifoldKpa?.let { kpa ->
+        if (isImperialMap) kpa * 0.145038f else kpa.toFloat()
+    }
+    val mapMax = if (isImperialMap) 35f else 250f
+    val mapUnit = if (isImperialMap) "PSI" else "kPa"
+    val mapValueText = mapDisplayValue?.let {
+        if (isImperialMap) String.format(Locale.US, "%.1f", it) else "${it.roundToInt()}"
+    } ?: "--"
+
+    val voltsText = telemetry.batteryVolts?.let {
+        String.format(Locale.US, "%.1fV", it)
+    } ?: "--"
+    val isLowBatt = telemetry.batteryVolts != null && telemetry.batteryVolts < rigPrefs.lowBatteryVolts
+
+    val intakeText = telemetry.intakeAirCelsius?.let { c -> "$c°C" } ?: "--"
+
+    val stftText = telemetry.shortTermFuelTrimB1?.let { trim ->
+        String.format(Locale.US, "%+.1f%%", trim)
+    } ?: "--"
+
+    val isLocked = rigPrefs.raceLayoutLocked
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.boardBg)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            EcuStatusBanner(
+                connectionStatus = connectionStatus,
+                adapterName = connectedDevice?.name,
+                statusMessage = statusMessage,
+                vinInfo = vinInfo,
+                milOn = telemetry.milOn,
+                onConnectClick = onOpenBluetoothSheet,
+                onDisconnectClick = onDisconnect
+            )
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = palette.surface,
+                border = BorderStroke(1.dp, palette.bezelBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isLocked) {
+                            "LAYOUT LOCKED"
+                        } else {
+                            "DRAG WINDOW TO MOVE • CORNER ↘ TO RESIZE"
+                        },
+                        fontFamily = JetBrainsMonoFontFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (isLocked) palette.textSecondary else palette.zone1,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    OutlinedButton(
+                        onClick = { onSetRaceLayoutLocked(!isLocked) },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isLocked) palette.bezelBorder else palette.zone1
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (isLocked) palette.podSurface else palette.zone1.copy(alpha = 0.14f),
+                            contentColor = if (isLocked) palette.textSecondary else palette.zone1
+                        ),
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("race_layout_lock_toggle")
+                    ) {
+                        Icon(
+                            imageVector = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.OpenWith,
+                            contentDescription = if (isLocked) "Unlock gauge layout" else "Lock gauge layout",
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isLocked) "Unlock" else "Lock",
+                            fontFamily = ChakraPetchFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            val defaults = RaceLayoutDefaults.defaultLayout()
+                            windowMap.clear()
+                            windowMap.putAll(defaults)
+                            onResetRaceLayout()
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        border = BorderStroke(1.dp, palette.bezelBorder),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = palette.podSurface,
+                            contentColor = palette.zone3
+                        ),
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("race_layout_reset_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.RestartAlt,
+                            contentDescription = "Reset race layout",
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Reset",
+                            fontFamily = ChakraPetchFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .testTag("race_adjustable_board")
+        ) {
+            val density = LocalDensity.current
+            val boardWidthDp = maxWidth
+            val boardWidthPx = with(density) { boardWidthDp.toPx() }.coerceAtLeast(1f)
+            val maxBottomDp = windowMap.values.maxOfOrNull { it.yDp + it.heightDp } ?: 900f
+            val totalBoardHeightDp = maxOf(maxHeight.value, maxBottomDp + 48f).dp
+
+            val bringToFront: (RaceWindowId) -> Unit = { id ->
+                val current = windowMap[id]
+                if (current != null) {
+                    val maxZ = windowMap.values.maxOfOrNull { it.zOrder } ?: 0
+                    if (current.zOrder < maxZ) {
+                        windowMap[id] = current.copy(zOrder = maxZ + 1)
+                    }
+                }
+            }
+
+            val onMoveDelta: (RaceWindowId, Float, Float) -> Unit = { id, dxPx, dyPx ->
+                val g = windowMap[id]
+                if (g != null) {
+                    val dxFrac = dxPx / boardWidthPx
+                    val dyDp = with(density) { dyPx.toDp().value }
+                    val newX = (g.xFraction + dxFrac).coerceIn(0f, (1f - g.widthFraction).coerceAtLeast(0f))
+                    val newY = (g.yDp + dyDp).coerceIn(0f, 2200f)
+                    windowMap[id] = g.copy(xFraction = newX, yDp = newY)
+                }
+            }
+
+            val onResizeDelta: (RaceWindowId, Float, Float) -> Unit = { id, dxPx, dyPx ->
+                val g = windowMap[id]
+                if (g != null) {
+                    val dwFrac = dxPx / boardWidthPx
+                    val dhDp = with(density) { dyPx.toDp().value }
+                    val minWFrac = (g.minWidthDp / boardWidthDp.value).coerceIn(0.12f, 0.90f)
+                    val maxWFrac = (1f - g.xFraction).coerceAtLeast(minWFrac)
+                    val newW = (g.widthFraction + dwFrac).coerceIn(minWFrac, maxWFrac)
+                    val newH = (g.heightDp + dhDp).coerceIn(g.minHeightDp, g.maxHeightDp)
+                    windowMap[id] = g.copy(widthFraction = newW, heightDp = newH)
+                }
+            }
+
+            val commitGesture: () -> Unit = {
+                onSaveRaceLayout(windowMap.toMap())
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(totalBoardHeightDp)
+            ) {
+                val orderedEntries = windowMap.entries.sortedBy { it.value.zOrder }
+                for ((id, geom) in orderedEntries) {
+                    AdjustableRaceWindow(
+                        windowId = id,
+                        geometry = geom,
+                        boardWidthPx = boardWidthPx,
+                        isLocked = isLocked,
+                        onBringToFront = bringToFront,
+                        onMoveDelta = onMoveDelta,
+                        onResizeDelta = onResizeDelta,
+                        onCommitGesture = commitGesture
+                    ) {
+                        when (id) {
+                            RaceWindowId.SHIFT_LIGHTS -> {
+                                RaceShiftLightBar(
+                                    rpm = telemetry.rpm,
+                                    rpmRedline = rpmRedline,
+                                    modifier = Modifier.testTag("race_shift_light_bar")
+                                )
+                            }
+
+                            RaceWindowId.FUEL_BAR -> {
+                                RaceSegmentedBarGauge(
+                                    title = "FUEL",
+                                    topMarker = "F",
+                                    bottomMarker = "E",
+                                    valueText = telemetry.fuelLevelPercent?.let { "${it.roundToInt()}%" } ?: "--%",
+                                    fraction = fuelFraction,
+                                    isWarning = isLowFuel,
+                                    isCoolantMode = false,
+                                    modifier = Modifier.testTag("race_gauge_fuel")
+                                )
+                            }
+
+                            RaceWindowId.SPEED_DIAL -> {
+                                RaceSpeedometerDial(
+                                    speedValue = speedDisplayValue,
+                                    speedDisplayText = speedDisplayText,
+                                    speedUnit = speedUnit,
+                                    maxSpeedScale = speedMax,
+                                    speedWarningThreshold = speedWarn,
+                                    majorTickCount = speedTickCount,
+                                    rpmText = rpmText,
+                                    isRedline = isRedline,
+                                    modifier = Modifier.testTag("race_gauge_speedometer")
+                                )
+                            }
+
+                            RaceWindowId.COOLANT_BAR -> {
+                                RaceSegmentedBarGauge(
+                                    title = "TEMP",
+                                    topMarker = "H",
+                                    bottomMarker = "C",
+                                    valueText = coolantDisplayValue?.let { "${it.roundToInt()}$tempUnit" } ?: "--$tempUnit",
+                                    fraction = coolantFraction,
+                                    isWarning = isCoolantOverheat,
+                                    isCoolantMode = true,
+                                    modifier = Modifier.testTag("race_gauge_coolant")
+                                )
+                            }
+
+                            RaceWindowId.THROTTLE_BAR -> {
+                                RaceThrottleBarCard(
+                                    throttlePercent = telemetry.throttlePercent,
+                                    modifier = Modifier.testTag("race_throttle_bar")
+                                )
+                            }
+
+                            RaceWindowId.RPM_POD -> {
+                                RaceCircularArcPod(
+                                    title = "ENGINE RPM",
+                                    valueText = rpmText,
+                                    unit = "RPM",
+                                    value = telemetry.rpm?.toFloat(),
+                                    minValue = 0f,
+                                    maxValue = maxRpmScale,
+                                    gradientColors = listOf(palette.zone1, palette.zone2, palette.zone3, palette.zone5),
+                                    modifier = Modifier.testTag("race_pod_rpm")
+                                )
+                            }
+
+                            RaceWindowId.MAP_POD -> {
+                                RaceCircularArcPod(
+                                    title = "MANIFOLD MAP",
+                                    valueText = mapValueText,
+                                    unit = mapUnit,
+                                    value = mapDisplayValue,
+                                    minValue = 0f,
+                                    maxValue = mapMax,
+                                    gradientColors = listOf(palette.accentBlue, palette.zone1, palette.zone3, palette.zone5),
+                                    modifier = Modifier.testTag("race_pod_map")
+                                )
+                            }
+
+                            RaceWindowId.LOAD_POD -> {
+                                RaceCircularArcPod(
+                                    title = "ENGINE LOAD",
+                                    valueText = telemetry.engineLoadPercent?.let { "${it.roundToInt()}" } ?: "--",
+                                    unit = "%",
+                                    value = telemetry.engineLoadPercent,
+                                    minValue = 0f,
+                                    maxValue = 100f,
+                                    gradientColors = listOf(palette.zone2, palette.zone3, palette.zone4, palette.zone5),
+                                    modifier = Modifier.testTag("race_pod_load")
+                                )
+                            }
+
+                            RaceWindowId.PEAKS_CARD -> {
+                                RaceSessionPeaksCard(
+                                    peakRpm = peakRpm,
+                                    peakSpeedDisplay = peakSpeedKph,
+                                    speedUnit = speedUnit,
+                                    batteryVoltsText = voltsText,
+                                    isLowBattery = isLowBatt,
+                                    intakeTempText = intakeText,
+                                    fuelTrimText = stftText,
+                                    onResetPeaks = {
+                                        peakRpm = telemetry.rpm
+                                        peakSpeedKph = calibratedSpeedKph
+                                    },
+                                    modifier = Modifier.testTag("race_peaks_card")
+                                )
+                            }
+
+                            RaceWindowId.INCLINOMETER -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    TrailInclinometerCard(
+                                        sensorState = sensorState,
+                                        pitchTareDeg = rigPrefs.pitchTareDeg,
+                                        rollTareDeg = rigPrefs.rollTareDeg,
+                                        onTareClick = onTareInclinometer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

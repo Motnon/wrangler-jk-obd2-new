@@ -37,6 +37,7 @@ import com.example.obd.RigPreferences
 import com.example.obd.TrailSensorState
 import com.example.obd.UnitSystem
 import com.example.obd.VinInfo
+import com.example.obd.applyCalibratedSpeedKph
 import com.example.ui.components.CircularArcGauge
 import com.example.ui.components.EcuStatusBanner
 import com.example.ui.components.TrailInclinometerCard
@@ -64,7 +65,7 @@ fun CockpitScreen(
     onTareInclinometer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isImperial = rigPrefs.unitSystem == UnitSystem.IMPERIAL
+    val isImperialMap = rigPrefs.unitSystem == UnitSystem.IMPERIAL
     val redlineRpm = when (rigPrefs.engineProfile) {
         JkEngineProfile.PENTASTAR_3_6 -> 6400f
         JkEngineProfile.EGH_3_8 -> 5600f
@@ -76,24 +77,17 @@ fun CockpitScreen(
         JkEngineProfile.CRD_2_8 -> 5000f
     }
 
-    val coolantDisplayValue: Float? = telemetry.coolantCelsius?.let { c ->
-        if (isImperial) (c * 9f / 5f) + 32f else c.toFloat()
-    }
-    val coolantThresholdDisplay: Float = if (isImperial) {
-        (rigPrefs.coolantWarnCelsius * 9f / 5f) + 32f
-    } else {
-        rigPrefs.coolantWarnCelsius.toFloat()
-    }
-    val coolantMin = if (isImperial) 80f else 25f
-    val coolantMax = if (isImperial) 260f else 130f
+    // Coolant temp is always Celsius (°C)
+    val coolantDisplayValue: Float? = telemetry.coolantCelsius?.toFloat()
+    val coolantThresholdDisplay: Float = rigPrefs.coolantWarnCelsius.toFloat()
+    val coolantMin = 25f
+    val coolantMax = 130f
 
-    val speedDisplayText = telemetry.speedKmh?.let { kmh ->
-        if (isImperial) "${(kmh * 0.621371f).roundToInt()}" else "$kmh"
-    } ?: "--"
+    // Speed is always KPH (with GPS tire calibration factor applied)
+    val calibratedSpeedKph = applyCalibratedSpeedKph(telemetry.speedKmh, rigPrefs.speedCalibrationFactor)
+    val speedDisplayText = calibratedSpeedKph?.toString() ?: "--"
 
-    val intakeDisplayText = telemetry.intakeAirCelsius?.let { c ->
-        if (isImperial) "${((c * 9f / 5f) + 32f).roundToInt()}" else "$c"
-    } ?: "--"
+    val intakeDisplayText = telemetry.intakeAirCelsius?.toString() ?: "--"
 
     val batteryText = telemetry.batteryVolts?.let {
         String.format(Locale.US, "%.1f", it)
@@ -147,7 +141,7 @@ fun CockpitScreen(
                         CircularArcGauge(
                             title = "Coolant Temp",
                             valueText = coolantDisplayValue?.roundToInt()?.toString() ?: "--",
-                            unit = if (isImperial) "°F" else "°C",
+                            unit = "°C",
                             value = coolantDisplayValue,
                             minValue = coolantMin,
                             maxValue = coolantMax,
@@ -171,12 +165,12 @@ fun CockpitScreen(
                                     batteryText = batteryText,
                                     isLowBattery = isLowBattery,
                                     speedText = speedDisplayText,
-                                    speedUnit = if (isImperial) "MPH" else "KM/H",
+                                    speedUnit = "KPH",
                                     intakeText = intakeDisplayText,
-                                    tempUnit = if (isImperial) "°F" else "°C",
+                                    tempUnit = "°C",
                                     loadText = loadText,
                                     telemetry = telemetry,
-                                    isImperial = isImperial
+                                    isImperial = isImperialMap
                                 )
                             }
                             TrailInclinometerCard(
@@ -192,12 +186,12 @@ fun CockpitScreen(
                             batteryText = batteryText,
                             isLowBattery = isLowBattery,
                             speedText = speedDisplayText,
-                            speedUnit = if (isImperial) "MPH" else "KM/H",
+                            speedUnit = "KPH",
                             intakeText = intakeDisplayText,
-                            tempUnit = if (isImperial) "°F" else "°C",
+                            tempUnit = "°C",
                             loadText = loadText,
                             telemetry = telemetry,
-                            isImperial = isImperial
+                            isImperial = isImperialMap
                         )
 
                         TrailInclinometerCard(

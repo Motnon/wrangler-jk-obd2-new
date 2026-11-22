@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">Wrangler OBD</string>
     <string name="nav_cockpit">Cockpit</string>
+    <string name="nav_race">Race</string>
     <string name="nav_scanner">DTC Scan</string>
     <string name="nav_terminal">Terminal</string>
     <string name="nav_garage">Garage</string>

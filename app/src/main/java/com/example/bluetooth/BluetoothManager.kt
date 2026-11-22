@@ -698,25 +698,26 @@ class BluetoothManager(private val context: Context) {
         pollingJob = scope.launch {
             var tick = 0
             while (_connectionStatus.value == ConnectionStatus.CONNECTED) {
-                applyPid(sendCommandRaw("010C", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
-                applyPid(sendCommandRaw("0105", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
-                applyPid(sendCommandRaw("010D", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
+                applyPid(sendCommandRaw("010C", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0C)
+                applyPid(sendCommandRaw("0105", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x05)
+                applyPid(sendCommandRaw("010D", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0D)
 
                 if (tick % 2 == 0) {
+                    applyPid(sendCommandRaw("012F", POLL_COMMAND_TIMEOUT_MS, logTerminal = (tick == 0)), expectedPid = 0x2F)
                     val voltResp = sendCommandRaw("ATRV", POLL_COMMAND_TIMEOUT_MS, logTerminal = false)
                     voltResp?.let { Elm327Protocol.parseVoltageResponse(it) }?.let { v ->
                         _telemetry.update { it.copy(batteryVolts = v, lastUpdatedMs = System.currentTimeMillis()) }
                     }
-                    applyPid(sendCommandRaw("0111", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
-                    applyPid(sendCommandRaw("0104", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
+                    applyPid(sendCommandRaw("0111", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x11)
+                    applyPid(sendCommandRaw("0104", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x04)
                 }
                 if (tick % 4 == 0) {
-                    applyPid(sendCommandRaw("010F", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
-                    applyPid(sendCommandRaw("010B", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
-                    applyPid(sendCommandRaw("0106", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
-                    applyPid(sendCommandRaw("0107", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
-                    applyPid(sendCommandRaw("0146", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
-                    applyPid(sendCommandRaw("0101", POLL_COMMAND_TIMEOUT_MS, logTerminal = false))
+                    applyPid(sendCommandRaw("010F", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0F)
+                    applyPid(sendCommandRaw("010B", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0B)
+                    applyPid(sendCommandRaw("0106", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x06)
+                    applyPid(sendCommandRaw("0107", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x07)
+                    applyPid(sendCommandRaw("0146", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x46)
+                    applyPid(sendCommandRaw("0101", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x01)
                 }
                 tick++
                 delay(250L)
@@ -724,9 +725,9 @@ class BluetoothManager(private val context: Context) {
         }
     }
 
-    private fun applyPid(raw: String?) {
+    private fun applyPid(raw: String?, expectedPid: Int? = null) {
         if (raw == null) return
-        val decoded = Elm327Protocol.decodeMode01(raw) ?: return
+        val decoded = Elm327Protocol.decodeMode01(raw, expectedPid = expectedPid) ?: return
         val now = System.currentTimeMillis()
         _telemetry.update { state ->
             when (decoded) {
@@ -740,6 +741,7 @@ class BluetoothManager(private val context: Context) {
                 is Elm327Protocol.DecodedPid.ManifoldPressure -> state.copy(manifoldKpa = decoded.kpa, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.ShortTermFuelTrim -> state.copy(shortTermFuelTrimB1 = decoded.percent, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.LongTermFuelTrim -> state.copy(longTermFuelTrimB1 = decoded.percent, lastUpdatedMs = now)
+                is Elm327Protocol.DecodedPid.FuelLevel -> state.copy(fuelLevelPercent = decoded.percent, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.ControlModuleVoltage -> state.copy(batteryVolts = decoded.volts, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.MonitorStatus -> state.copy(
                     milOn = decoded.milOn,

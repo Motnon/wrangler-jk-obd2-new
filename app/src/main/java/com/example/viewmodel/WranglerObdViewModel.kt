@@ -8,6 +8,7 @@ import com.example.data.JkObdDatabase
 import com.example.data.RigPreferencesRepository
 import com.example.data.ScanHistoryRepository
 import com.example.data.ScanRecordEntity
+import com.example.obd.AppVisualTheme
 import com.example.obd.BluetoothDeviceItem
 import com.example.obd.ConnectionStatus
 import com.example.obd.DtcCodeInfo
@@ -15,24 +16,40 @@ import com.example.obd.JkDiagnosticLibrary
 import com.example.obd.JkEngineProfile
 import com.example.obd.JkSubsystem
 import com.example.obd.LiveTelemetry
+import com.example.obd.NightModeSetting
+import com.example.obd.RaceLayoutDefaults
+import com.example.obd.RaceWindowGeometry
+import com.example.obd.RaceWindowId
 import com.example.obd.RigPreferences
 import com.example.obd.TerminalEntry
 import com.example.obd.TrailSensorState
 import com.example.obd.UnitSystem
 import com.example.obd.VinInfo
+import com.example.obd.parseTireSizeInches
+import com.example.sensors.GpsSpeedManager
+import com.example.sensors.GpsTelemetryState
+import com.example.sensors.PhoneBatteryMonitor
+import com.example.sensors.PhoneBatteryState
+import com.example.sensors.SolarSchedule
+import com.example.sensors.SolarTimeCalculator
 import com.example.sensors.TrailSensorManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class WranglerObdViewModel(application: Application) : AndroidViewModel(application) {
 
     private val bluetoothManager = BluetoothManager(application.applicationContext)
     private val sensorManager = TrailSensorManager(application.applicationContext)
+    private val batteryMonitor = PhoneBatteryMonitor(application.applicationContext)
+    private val gpsSpeedManager = GpsSpeedManager(application.applicationContext)
     private val rigPrefsRepo = RigPreferencesRepository(application.applicationContext)
     private val scanHistoryRepo = ScanHistoryRepository(
         JkObdDatabase.getInstance(application.applicationContext).scanRecordDao()
@@ -50,6 +67,8 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     val vinInfo: StateFlow<VinInfo?> = bluetoothManager.vinInfo
     val terminalLogs: StateFlow<List<TerminalEntry>> = bluetoothManager.terminalLogs
     val sensorState: StateFlow<TrailSensorState> = sensorManager.sensorState
+    val phoneBatteryState: StateFlow<PhoneBatteryState> = batteryMonitor.batteryState
+    val gpsState: StateFlow<GpsTelemetryState> = gpsSpeedManager.gpsState
 
     val rigPreferences: StateFlow<RigPreferences> = rigPrefsRepo.preferencesFlow
         .stateIn(
@@ -57,6 +76,39 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = RigPreferences()
         )
+
+    private val minuteTicker = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(30_000L)
+        }
+    }
+
+    val solarSchedule: StateFlow<SolarSchedule> = combine(
+        gpsState,
+        minuteTicker
+    ) { gps, _ ->
+        SolarTimeCalculator.computeSchedule(gps.latitude, gps.longitude)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = SolarTimeCalculator.computeSchedule(null, null)
+    )
+
+    val isNightModeActive: StateFlow<Boolean> = combine(
+        rigPreferences,
+        solarSchedule
+    ) { prefs, solar ->
+        when (prefs.nightModeSetting) {
+            NightModeSetting.MANUAL_ON -> true
+            NightModeSetting.MANUAL_OFF -> false
+            NightModeSetting.AUTO_SUN -> solar.isNightNow
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = false
+    )
 
     val scanHistory: StateFlow<List<ScanRecordEntity>> = scanHistoryRepo.allScans
         .stateIn(
@@ -94,9 +146,81 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     private val _uiFeedbackMessage = MutableStateFlow<String?>(null)
     val uiFeedbackMessage: StateFlow<String?> = _uiFeedbackMessage.asStateFlow()
 
-    fun startSensors() = sensorManager.start()
+    fun startSensors() {
+        sensorManager.start()
+        batteryMonitor.start()
+        gpsSpeedManager.refreshLastKnownCoordinates()
+    }
 
-    fun stopSensors() = sensorManager.stop()
+    fun stopSensors() {
+        sensorManager.stop()
+        batteryMonitor.stop()
+        gpsSpeedManager.stopCalibrationUpdates()
+    }
+
+    fun hasFineLocationPermission(): Boolean = gpsSpeedManager.hasFineLocationPermission()
+
+    fun onLocationPermissionResult(granted: Boolean, startCalibrationAfterGrant: Boolean = true) {
+        gpsSpeedManager.refreshLastKnownCoordinates()
+        if (granted && startCalibrationAfterGrant) {
+            gpsSpeedManager.startCalibrationUpdates()
+        } else if (!granted) {
+            _uiFeedbackMessage.value = "Fine location permission is needed for live GPS speed calibration."
+        }
+    }
+
+    fun startGpsCalibration() = gpsSpeedManager.startCalibrationUpdates()
+
+    fun stopGpsCalibration() = gpsSpeedManager.stopCalibrationUpdates()
+
+    fun applyLiveGpsSpeedCalibration() {
+        val gpsKph = gpsState.value.gpsSpeedKph
+        val obdKph = telemetry.value.speedKmh
+        if (gpsKph == null || gpsKph < 10f) {
+            _uiFeedbackMessage.value = "Drive at least 10 KPH with active GPS lock to calculate offset."
+            return
+        }
+        if (obdKph == null || obdKph < 10) {
+            _uiFeedbackMessage.value = "Connect OBD-II and drive at least 10 KPH to match ECU speed."
+            return
+        }
+        val factor = (gpsKph / obdKph.toFloat()).coerceIn(0.70f, 1.45f)
+        viewModelScope.launch {
+            rigPrefsRepo.setSpeedCalibration(factor)
+            val pct = (factor - 1f) * 100f
+            _uiFeedbackMessage.value = String.format(
+                Locale.US,
+                "GPS calibration applied: ×%.3f (%+.1f%%)",
+                factor,
+                pct
+            )
+        }
+    }
+
+    fun applyTireRatioCalibration(stockTireInches: Float) {
+        val actualInches = parseTireSizeInches(rigPreferences.value.tireSizeInches)
+        if (actualInches == null || stockTireInches <= 0f) {
+            _uiFeedbackMessage.value = "Enter a valid tire diameter (e.g. 35\") in Rig Profile."
+            return
+        }
+        val factor = (actualInches / stockTireInches).coerceIn(0.70f, 1.45f)
+        viewModelScope.launch {
+            rigPrefsRepo.setSpeedCalibration(factor, stockTireInches)
+            val pct = (factor - 1f) * 100f
+            _uiFeedbackMessage.value = String.format(
+                Locale.US,
+                "Tire-size offset applied: ×%.3f (%+.1f%%)",
+                factor,
+                pct
+            )
+        }
+    }
+
+    fun setSpeedCalibrationFactor(factor: Float, stockTireInches: Float? = null) {
+        viewModelScope.launch {
+            rigPrefsRepo.setSpeedCalibration(factor, stockTireInches)
+        }
+    }
 
     fun requiredBluetoothPermissions(): Array<String> = bluetoothManager.requiredPermissions()
 
@@ -221,6 +345,43 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun setVisualTheme(theme: AppVisualTheme) {
+        viewModelScope.launch {
+            rigPrefsRepo.setVisualTheme(theme)
+        }
+    }
+
+    fun setNightModeSetting(setting: NightModeSetting) {
+        viewModelScope.launch {
+            rigPrefsRepo.setNightModeSetting(setting)
+        }
+    }
+
+    fun setNightBrightnessPercent(percent: Int) {
+        viewModelScope.launch {
+            rigPrefsRepo.setNightBrightnessPercent(percent)
+        }
+    }
+
+    fun saveRaceLayout(layout: Map<RaceWindowId, RaceWindowGeometry>) {
+        viewModelScope.launch {
+            rigPrefsRepo.setRaceLayoutSpec(RaceLayoutDefaults.encode(layout))
+        }
+    }
+
+    fun resetRaceLayout() {
+        viewModelScope.launch {
+            rigPrefsRepo.setRaceLayoutSpec("")
+            _uiFeedbackMessage.value = "Race gauge layout reset to default."
+        }
+    }
+
+    fun setRaceLayoutLocked(locked: Boolean) {
+        viewModelScope.launch {
+            rigPrefsRepo.setRaceLayoutLocked(locked)
+        }
+    }
+
     fun consumeFeedbackMessage() {
         _uiFeedbackMessage.value = null
     }
@@ -228,6 +389,8 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     override fun onCleared() {
         super.onCleared()
         sensorManager.stop()
+        batteryMonitor.stop()
+        gpsSpeedManager.stopCalibrationUpdates()
         bluetoothManager.release()
     }
 }

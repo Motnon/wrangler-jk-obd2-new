@@ -17,6 +17,7 @@ object Elm327Protocol {
         data class ManifoldPressure(val kpa: Int) : DecodedPid()
         data class ShortTermFuelTrim(val percent: Float) : DecodedPid()
         data class LongTermFuelTrim(val percent: Float) : DecodedPid()
+        data class FuelLevel(val percent: Float) : DecodedPid()
         data class ControlModuleVoltage(val volts: Float) : DecodedPid()
         data class MonitorStatus(val milOn: Boolean, val dtcCount: Int) : DecodedPid()
     }
@@ -50,24 +51,44 @@ object Elm327Protocol {
     }
 
     fun extractHexBytes(line: String): List<Int> {
-        val compact = line.replace(" ", "").uppercase()
+        // Strip optional 3-nibble CAN arbitration header like "7E8 " or "7DF " if ATH0 wasn't honored
+        val withoutCanHeader = line.trim()
+            .replace(Regex("""^[0-9A-Fa-f]{3}\s+"""), "")
+        val tokens = withoutCanHeader.split(Regex("""\s+""")).filter { it.isNotEmpty() }
+        var compact = if (tokens.size > 1 && tokens.all { it.length == 2 }) {
+            tokens.joinToString("").uppercase()
+        } else {
+            withoutCanHeader.replace(" ", "").uppercase()
+        }
+        // Handle rare unspaced CAN header (e.g., "7E803410582") producing an odd-length hex string
+        if (compact.length >= 9 && compact.length % 2 == 1 &&
+            (compact.startsWith("7E") || compact.startsWith("7DF"))
+        ) {
+            compact = compact.drop(3)
+        }
         if (compact.length < 2 || compact.length % 2 != 0) return emptyList()
         if (!compact.all { it in '0'..'9' || it in 'A'..'F' }) return emptyList()
         return compact.chunked(2).mapNotNull { it.toIntOrNull(16) }
     }
 
-    fun decodeMode01(raw: String): DecodedPid? {
+    fun decodeMode01(raw: String, expectedPid: Int? = null): DecodedPid? {
         if (isErrorResponse(raw)) return null
-        val lines = sanitizeResponse(raw).lines()
+        val lines = sanitizeResponse(raw)
+            .replace(Regex("""\b\d+:"""), "\n")
+            .lines()
         for (line in lines) {
-            // Strip ISO-TP frame length prefix like "0: 41 ..." if present
             val normalizedLine = line.replace(Regex("""^\d+:"""), "").trim()
             val bytes = extractHexBytes(normalizedLine)
-            val idx = findHeaderIndex(bytes, 0x41)
+            if (bytes.size < 3) continue
+            val idx = if (expectedPid != null) {
+                findHeaderWithPid(bytes, 0x41, expectedPid)
+            } else {
+                findHeaderIndex(bytes, 0x41)
+            }
             if (idx < 0 || idx + 1 >= bytes.size) continue
             val pid = bytes[idx + 1]
             val data = bytes.drop(idx + 2)
-            return when (pid) {
+            val decoded = when (pid) {
                 0x01 -> if (data.isNotEmpty()) {
                     val a = data[0]
                     val mil = (a and 0x80) != 0
@@ -101,6 +122,9 @@ object Elm327Protocol {
                 0x11 -> if (data.isNotEmpty()) {
                     DecodedPid.ThrottlePosition((data[0] * 100f) / 255f)
                 } else null
+                0x2F -> if (data.isNotEmpty()) {
+                    DecodedPid.FuelLevel((data[0] * 100f) / 255f)
+                } else null
                 0x42 -> if (data.size >= 2) {
                     DecodedPid.ControlModuleVoltage(((data[0] * 256) + data[1]) / 1000f)
                 } else null
@@ -109,8 +133,16 @@ object Elm327Protocol {
                 } else null
                 else -> null
             }
+            if (decoded != null) return decoded
         }
         return null
+    }
+
+    private fun findHeaderWithPid(bytes: List<Int>, header: Int, pid: Int): Int {
+        for (i in 0 until bytes.size - 1) {
+            if (bytes[i] == header && bytes[i + 1] == pid) return i
+        }
+        return -1
     }
 
     /**

@@ -27,6 +27,11 @@ class Elm327ProtocolTest {
         // 41 0D 50 -> 80 km/h
         val speed = Elm327Protocol.decodeMode01("410D50")
         assertEquals(Elm327Protocol.DecodedPid.Speed(80), speed)
+
+        // 41 2F 80 -> (128 * 100) / 255 = 50.196%
+        val fuel = Elm327Protocol.decodeMode01("41 2F 80")
+        assertTrue(fuel is Elm327Protocol.DecodedPid.FuelLevel)
+        assertEquals(50.196f, (fuel as Elm327Protocol.DecodedPid.FuelLevel).percent, 0.1f)
     }
 
     @Test
@@ -87,6 +92,17 @@ class Elm327ProtocolTest {
         val decodedVin = Elm327Protocol.decodeVinResponse(strippedVin)
         assertNotNull(decodedVin)
         assertEquals(vin, decodedVin!!.vin)
+
+        // CAN header "7E8 03 ..." and echoed PID guard for Coolant (0105) & Fuel Level (012F)
+        val canCoolant = Elm327Protocol.decodeMode01("7E8 03 41 05 82", expectedPid = 0x05)
+        assertEquals(Elm327Protocol.DecodedPid.CoolantTemp(90), canCoolant)
+
+        val unspacedCanCoolant = Elm327Protocol.decodeMode01("7E803410582", expectedPid = 0x05)
+        assertEquals(Elm327Protocol.DecodedPid.CoolantTemp(90), unspacedCanCoolant)
+
+        val echoedFuel = Elm327Protocol.decodeMode01("012F 412F9A", expectedPid = 0x2F)
+        assertTrue(echoedFuel is Elm327Protocol.DecodedPid.FuelLevel)
+        assertEquals((0x9A * 100f) / 255f, (echoedFuel as Elm327Protocol.DecodedPid.FuelLevel).percent, 0.1f)
     }
 
     @Test

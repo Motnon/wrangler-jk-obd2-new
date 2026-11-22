@@ -7,8 +7,21 @@ enum class JkEngineProfile(val label: String, val years: String, val displacemen
 }
 
 enum class UnitSystem(val label: String) {
-    IMPERIAL("Imperial (°F / MPH / PSI)"),
-    METRIC("Metric (°C / KM/H / kPa)")
+    METRIC("Metric (°C / KPH / kPa)"),
+    IMPERIAL("Imperial MAP (PSI / °C / KPH)")
+}
+
+enum class AppVisualTheme(val label: String, val subtitle: String) {
+    NEON_CYAN_AMBER("Neon Cyan & Amber", "Signature trail cyan + amber"),
+    RACING_RED("Racing Red", "Track crimson + hot orange"),
+    DEEP_GREEN("Deep Green", "Tactical forest emerald + lime"),
+    CLASSIC_WHITE("Classic White", "Crisp motorsport dial white")
+}
+
+enum class NightModeSetting(val label: String) {
+    AUTO_SUN("Auto Sun"),
+    MANUAL_ON("Night On"),
+    MANUAL_OFF("Off")
 }
 
 enum class ConnectionStatus {
@@ -43,6 +56,7 @@ data class LiveTelemetry(
     val manifoldKpa: Int? = null,
     val shortTermFuelTrimB1: Float? = null,
     val longTermFuelTrimB1: Float? = null,
+    val fuelLevelPercent: Float? = null,
     val batteryVolts: Float? = null,
     val milOn: Boolean = false,
     val ecuDtcCount: Int = 0,
@@ -114,11 +128,28 @@ data class TrailSensorState(
 data class RigPreferences(
     val rigNickname: String = "Wrangler JK",
     val engineProfile: JkEngineProfile = JkEngineProfile.PENTASTAR_3_6,
-    val unitSystem: UnitSystem = UnitSystem.IMPERIAL,
+    val unitSystem: UnitSystem = UnitSystem.METRIC,
     val tireSizeInches: String = "35\"",
+    val stockTireInches: Float = 32.0f,
     val axleGearRatio: String = "4.10",
-    val coolantWarnCelsius: Int = 108, // ~226 F
+    val coolantWarnCelsius: Int = 108,
     val lowBatteryVolts: Float = 11.8f,
     val pitchTareDeg: Float = 0f,
-    val rollTareDeg: Float = 0f
+    val rollTareDeg: Float = 0f,
+    val raceLayoutSpec: String = "",
+    val raceLayoutLocked: Boolean = false,
+    val visualTheme: AppVisualTheme = AppVisualTheme.NEON_CYAN_AMBER,
+    val nightModeSetting: NightModeSetting = NightModeSetting.AUTO_SUN,
+    val nightBrightnessPercent: Int = 20,
+    val speedCalibrationFactor: Float = 1.0f
 )
+
+fun parseTireSizeInches(raw: String): Float? {
+    val match = Regex("""(\d+(?:\.\d+)?)""").find(raw)
+    return match?.groupValues?.getOrNull(1)?.toFloatOrNull()
+}
+
+fun applyCalibratedSpeedKph(rawSpeedKmh: Int?, factor: Float): Int? {
+    if (rawSpeedKmh == null) return null
+    return kotlin.math.round(rawSpeedKmh * factor.coerceIn(0.70f, 1.45f)).toInt()
+}

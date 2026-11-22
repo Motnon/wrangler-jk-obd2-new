@@ -13,6 +13,7 @@ object JkDiagnosticLibrary {
         ObdPidDefinition("010B", "Intake Manifold (MAP)", "Vacuum at idle ~30–40 kPa; WOT ~95–100 kPa", "PSI", "kPa"),
         ObdPidDefinition("0106", "Short Term Fuel Trim B1", "Healthy closed-loop stays within ±8%", "%", "%"),
         ObdPidDefinition("0107", "Long Term Fuel Trim B1", ">+10% indicates vacuum leak or weak fuel delivery", "%", "%"),
+        ObdPidDefinition("012F", "Fuel Tank Level", "18.6 gal (2-dr) / 22.5 gal (4-dr JKU) level sender", "%", "%"),
         ObdPidDefinition("0146", "Ambient Air Temp", "Bumper grille sensor used by HVAC & TIPM", "°F", "°C"),
         ObdPidDefinition("0101", "MIL & DTC Monitor", "Check Engine Lamp state and stored fault count", "Count", "Count")
     )

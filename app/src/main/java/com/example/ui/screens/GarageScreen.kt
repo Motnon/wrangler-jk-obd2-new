@@ -52,10 +52,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.ScanRecordEntity
+import com.example.obd.AppVisualTheme
 import com.example.obd.JkEngineProfile
+import com.example.obd.LiveTelemetry
+import com.example.obd.NightModeSetting
 import com.example.obd.RigPreferences
 import com.example.obd.UnitSystem
 import com.example.obd.VinInfo
+import com.example.sensors.GpsTelemetryState
+import com.example.sensors.SolarSchedule
+import com.example.ui.components.DisplayAndNightModeCard
+import com.example.ui.components.GpsSpeedCalibrationCard
 import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.OverlandAmber
@@ -69,11 +76,25 @@ import kotlin.math.roundToInt
 fun GarageScreen(
     rigPrefs: RigPreferences,
     vinInfo: VinInfo?,
+    telemetry: LiveTelemetry,
+    gpsState: GpsTelemetryState,
+    solarSchedule: SolarSchedule,
+    isNightModeActive: Boolean,
+    hasFineLocationPermission: Boolean,
     scanHistory: List<ScanRecordEntity>,
     onUpdateRigDetails: (String, String, String) -> Unit,
     onSelectEngine: (JkEngineProfile) -> Unit,
     onSelectUnitSystem: (UnitSystem) -> Unit,
     onUpdateAlertThresholds: (Int, Float) -> Unit,
+    onSelectVisualTheme: (AppVisualTheme) -> Unit,
+    onSelectNightMode: (NightModeSetting) -> Unit,
+    onNightBrightnessChange: (Int) -> Unit,
+    onLocationPermissionResult: (Boolean, Boolean) -> Unit,
+    onStartGpsCalibration: () -> Unit,
+    onStopGpsCalibration: () -> Unit,
+    onApplyLiveGpsCalibration: () -> Unit,
+    onApplyTireRatioCalibration: (Float) -> Unit,
+    onSetSpeedCalibrationFactor: (Float) -> Unit,
     onResetInclinometerTare: () -> Unit,
     onDeleteScanRecord: (Long) -> Unit,
     modifier: Modifier = Modifier
@@ -84,7 +105,6 @@ fun GarageScreen(
     var coolantSlider by remember(rigPrefs.coolantWarnCelsius) { mutableIntStateOf(rigPrefs.coolantWarnCelsius) }
     var batterySlider by remember(rigPrefs.lowBatteryVolts) { mutableFloatStateOf(rigPrefs.lowBatteryVolts) }
 
-    val isImperial = rigPrefs.unitSystem == UnitSystem.IMPERIAL
     val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy • HH:mm", Locale.US) }
 
     LazyColumn(
@@ -242,6 +262,30 @@ fun GarageScreen(
                     }
                 }
 
+                DisplayAndNightModeCard(
+                    rigPrefs = rigPrefs,
+                    solarSchedule = solarSchedule,
+                    isNightModeActive = isNightModeActive,
+                    hasLocationPermission = hasFineLocationPermission,
+                    onSelectVisualTheme = onSelectVisualTheme,
+                    onSelectNightMode = onSelectNightMode,
+                    onNightBrightnessChange = onNightBrightnessChange,
+                    onLocationPermissionResult = onLocationPermissionResult
+                )
+
+                GpsSpeedCalibrationCard(
+                    rigPrefs = rigPrefs,
+                    telemetry = telemetry,
+                    gpsState = gpsState,
+                    hasFineLocationPermission = hasFineLocationPermission,
+                    onLocationPermissionResult = onLocationPermissionResult,
+                    onStartGpsCalibration = onStartGpsCalibration,
+                    onStopGpsCalibration = onStopGpsCalibration,
+                    onApplyLiveGpsCalibration = onApplyLiveGpsCalibration,
+                    onApplyTireRatioCalibration = onApplyTireRatioCalibration,
+                    onSetCalibrationFactor = onSetSpeedCalibrationFactor
+                )
+
                 // Units & Alert Thresholds
                 Surface(
                     shape = MaterialTheme.shapes.large,
@@ -277,7 +321,11 @@ fun GarageScreen(
                                     onClick = { onSelectUnitSystem(system) },
                                     label = {
                                         Text(
-                                            if (system == UnitSystem.IMPERIAL) "Imperial (°F / MPH)" else "Metric (°C / KM/H)"
+                                            if (system == UnitSystem.METRIC) {
+                                                "Metric (KPH / °C / kPa)"
+                                            } else {
+                                                "MAP PSI (KPH / °C)"
+                                            }
                                         )
                                     },
                                     modifier = Modifier.testTag("unit_chip_${system.name.lowercase()}")
@@ -286,11 +334,7 @@ fun GarageScreen(
                         }
 
                         Column {
-                            val coolantText = if (isImperial) {
-                                "${((coolantSlider * 9f / 5f) + 32f).roundToInt()}°F"
-                            } else {
-                                "${coolantSlider}°C"
-                            }
+                            val coolantText = "${coolantSlider}°C"
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
