@@ -10,12 +10,15 @@ import kotlin.math.roundToInt
 class DiagnosticScanEngine {
 
     private var lastCoolantC: Int? = null
+    private var lastEngineOilC: Int? = null
     private var lastAmbientC: Int? = null
     private var lastIntakeC: Int? = null
+    private var lastChargeAirC: Int? = null
     private var lastCatB1C: Float? = null
     private var lastCatB2C: Float? = null
     private var lastBaroKpa: Int? = null
     private var lastMapKpa: Int? = null
+    private var lastBoostKpa: Float? = null
 
     private var lastThrottlePct: Float? = null
     private var lastRelThrottlePct: Float? = null
@@ -30,6 +33,7 @@ class DiagnosticScanEngine {
     private var lastStftB2Pct: Float? = null
     private var lastEquivRatio: Float? = null
     private var lastFuelLevelPct: Float? = null
+    private var lastFuelRailKpa: Float? = null
 
     private var o2VoltageBySlot = mutableMapOf<Int, Float>()
     private var o2StftBySlot = mutableMapOf<Int, Float?>()
@@ -51,6 +55,7 @@ class DiagnosticScanEngine {
     private var lastDistSinceClearKm: Int? = null
     private var lastDistWithMilKm: Int? = null
     private var lastWarmUps: Int? = null
+    private var lastHybridBatteryPct: Float? = null
 
     private val updatedAtByTest = mutableMapOf<DiagnosticTestId, Long>()
     private val unsupportedCommands = mutableSetOf<String>()
@@ -59,12 +64,15 @@ class DiagnosticScanEngine {
 
     fun resetSession() {
         lastCoolantC = null
+        lastEngineOilC = null
         lastAmbientC = null
         lastIntakeC = null
+        lastChargeAirC = null
         lastCatB1C = null
         lastCatB2C = null
         lastBaroKpa = null
         lastMapKpa = null
+        lastBoostKpa = null
         lastThrottlePct = null
         lastRelThrottlePct = null
         lastAbsThrottleBPct = null
@@ -77,6 +85,7 @@ class DiagnosticScanEngine {
         lastStftB2Pct = null
         lastEquivRatio = null
         lastFuelLevelPct = null
+        lastFuelRailKpa = null
         o2VoltageBySlot.clear()
         o2StftBySlot.clear()
         o2SlotSeen.clear()
@@ -94,6 +103,7 @@ class DiagnosticScanEngine {
         lastDistSinceClearKm = null
         lastDistWithMilKm = null
         lastWarmUps = null
+        lastHybridBatteryPct = null
         updatedAtByTest.clear()
         unsupportedCommands.clear()
         noDataStreaks.clear()
@@ -182,6 +192,8 @@ class DiagnosticScanEngine {
                 4 -> DiagnosticTestId.MISFIRE_CYL_4
                 5 -> DiagnosticTestId.MISFIRE_CYL_5
                 6 -> DiagnosticTestId.MISFIRE_CYL_6
+                7 -> DiagnosticTestId.MISFIRE_CYL_7
+                8 -> DiagnosticTestId.MISFIRE_CYL_8
                 else -> null
             }
             if (testId != null) {
@@ -216,6 +228,10 @@ class DiagnosticScanEngine {
                 lastCoolantC = decoded.celsius
                 updatedAtByTest[DiagnosticTestId.ENGINE_COOLANT_TEMP] = nowMs
             }
+            is Elm327Protocol.DecodedPid.EngineOilTemp -> {
+                lastEngineOilC = decoded.celsius
+                updatedAtByTest[DiagnosticTestId.ENGINE_OIL_TEMP] = nowMs
+            }
             is Elm327Protocol.DecodedPid.AmbientAirTemp -> {
                 lastAmbientC = decoded.celsius
                 updatedAtByTest[DiagnosticTestId.AMBIENT_AIR_TEMP] = nowMs
@@ -223,6 +239,10 @@ class DiagnosticScanEngine {
             is Elm327Protocol.DecodedPid.IntakeAirTemp -> {
                 lastIntakeC = decoded.celsius
                 updatedAtByTest[DiagnosticTestId.INTAKE_AIR_TEMP] = nowMs
+            }
+            is Elm327Protocol.DecodedPid.ChargeAirCoolerTemp -> {
+                lastChargeAirC = decoded.celsius
+                updatedAtByTest[DiagnosticTestId.CHARGE_AIR_COOLER_TEMP] = nowMs
             }
             is Elm327Protocol.DecodedPid.CatalystTempB1 -> {
                 lastCatB1C = decoded.celsius
@@ -239,6 +259,10 @@ class DiagnosticScanEngine {
             is Elm327Protocol.DecodedPid.ManifoldPressure -> {
                 lastMapKpa = decoded.kpa
                 updatedAtByTest[DiagnosticTestId.MANIFOLD_MAP] = nowMs
+            }
+            is Elm327Protocol.DecodedPid.BoostPressureControl -> {
+                lastBoostKpa = decoded.kpa
+                updatedAtByTest[DiagnosticTestId.TURBO_BOOST_PRESSURE] = nowMs
             }
             is Elm327Protocol.DecodedPid.ThrottlePosition -> {
                 lastThrottlePct = decoded.percent
@@ -288,6 +312,23 @@ class DiagnosticScanEngine {
                 lastFuelLevelPct = decoded.percent
                 updatedAtByTest[DiagnosticTestId.FUEL_TANK_LEVEL] = nowMs
             }
+            is Elm327Protocol.DecodedPid.FuelPressure -> {
+                lastFuelRailKpa = decoded.kpa.toFloat()
+                updatedAtByTest[DiagnosticTestId.FUEL_RAIL_PRESSURE] = nowMs
+            }
+            is Elm327Protocol.DecodedPid.FuelRailPressureRel -> {
+                lastFuelRailKpa = decoded.kpa
+                updatedAtByTest[DiagnosticTestId.FUEL_RAIL_PRESSURE] = nowMs
+            }
+            is Elm327Protocol.DecodedPid.FuelRailPressureGauge -> {
+                lastFuelRailKpa = decoded.kpa.toFloat()
+                updatedAtByTest[DiagnosticTestId.FUEL_RAIL_PRESSURE] = nowMs
+            }
+            is Elm327Protocol.DecodedPid.HybridBatteryRemaining -> {
+                lastHybridBatteryPct = decoded.percent
+                updatedAtByTest[DiagnosticTestId.HYBRID_BATTERY_LIFE] = nowMs
+            }
+            is Elm327Protocol.DecodedPid.FuelType -> Unit
             is Elm327Protocol.DecodedPid.OxygenSensorReading -> {
                 val slot = when (decoded.pid) {
                     0x14 -> 1
@@ -441,6 +482,14 @@ class DiagnosticScanEngine {
             )
             DiagnosticTestId.BAROMETRIC_PRESSURE -> reading(lastBaroKpa?.let { "$it kPa" })
             DiagnosticTestId.MANIFOLD_MAP -> reading(lastMapKpa?.let { "$it kPa" })
+            DiagnosticTestId.ENGINE_OIL_TEMP -> reading(
+                lastEngineOilC?.let { "$it °C" },
+                alert = (lastEngineOilC ?: Int.MIN_VALUE) >= (coolantWarnCelsius + 16)
+            )
+            DiagnosticTestId.TURBO_BOOST_PRESSURE -> reading(
+                lastBoostKpa?.let { String.format(Locale.US, "%.1f kPa", it) }
+            )
+            DiagnosticTestId.CHARGE_AIR_COOLER_TEMP -> reading(lastChargeAirC?.let { "$it °C" })
             DiagnosticTestId.THROTTLE_POSITION -> reading(lastThrottlePct?.let { String.format(Locale.US, "%.1f%%", it) })
             DiagnosticTestId.RELATIVE_THROTTLE_POSITION -> reading(lastRelThrottlePct?.let { String.format(Locale.US, "%.1f%%", it) })
             DiagnosticTestId.ABSOLUTE_THROTTLE_B -> reading(lastAbsThrottleBPct?.let { String.format(Locale.US, "%.1f%%", it) })
@@ -460,6 +509,9 @@ class DiagnosticScanEngine {
                 lastFuelLevelPct?.let { "${it.roundToInt()}%" },
                 alert = lastFuelLevelPct != null && lastFuelLevelPct!! <= 15f
             )
+            DiagnosticTestId.FUEL_RAIL_PRESSURE -> reading(
+                lastFuelRailKpa?.let { String.format(Locale.US, "%,.0f kPa", it) }
+            )
             DiagnosticTestId.O2_S1_B1S1_VOLTAGE -> reading(o2VoltageBySlot[1]?.let { String.format(Locale.US, "%.3f V", it) })
             DiagnosticTestId.O2_S1_B1S1_STFT -> reading(formatO2Stft(1))
             DiagnosticTestId.O2_S2_B1S2_VOLTAGE -> reading(o2VoltageBySlot[2]?.let { String.format(Locale.US, "%.3f V", it) })
@@ -475,6 +527,8 @@ class DiagnosticScanEngine {
             DiagnosticTestId.MISFIRE_CYL_4 -> formatMisfireReading(test, 4, defaultPendingStatus, updatedAt)
             DiagnosticTestId.MISFIRE_CYL_5 -> formatMisfireReading(test, 5, defaultPendingStatus, updatedAt)
             DiagnosticTestId.MISFIRE_CYL_6 -> formatMisfireReading(test, 6, defaultPendingStatus, updatedAt)
+            DiagnosticTestId.MISFIRE_CYL_7 -> formatMisfireReading(test, 7, defaultPendingStatus, updatedAt)
+            DiagnosticTestId.MISFIRE_CYL_8 -> formatMisfireReading(test, 8, defaultPendingStatus, updatedAt)
             DiagnosticTestId.COMMANDED_EGR -> reading(lastCmdEgrPct?.let { String.format(Locale.US, "%.1f%%", it) })
             DiagnosticTestId.EGR_ERROR -> reading(lastEgrErrorPct?.let { String.format(Locale.US, "%+.1f%%", it) })
             DiagnosticTestId.COMMANDED_EVAP_PURGE -> reading(lastCmdEvapPct?.let { String.format(Locale.US, "%.1f%%", it) })
@@ -495,6 +549,9 @@ class DiagnosticScanEngine {
                 alert = (lastDistWithMilKm ?: 0) > 0
             )
             DiagnosticTestId.WARM_UPS_SINCE_CODES_CLEARED -> reading(lastWarmUps?.let { "$it" })
+            DiagnosticTestId.HYBRID_BATTERY_LIFE -> reading(
+                lastHybridBatteryPct?.let { "${it.roundToInt()}%" }
+            )
         }
     }
 

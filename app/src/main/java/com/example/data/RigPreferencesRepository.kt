@@ -15,6 +15,7 @@ import com.example.obd.JkEngineProfile
 import com.example.obd.NightModeSetting
 import com.example.obd.RigPreferences
 import com.example.obd.UnitSystem
+import com.example.obd.WranglerModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.Locale
@@ -43,6 +44,7 @@ class RigPreferencesRepository(private val context: Context) {
         val SPEED_CALIBRATION_FACTOR = floatPreferencesKey("speed_calibration_factor")
         val SELECTED_DIAG_TESTS = stringPreferencesKey("selected_diag_tests")
         val APP_LANGUAGE = stringPreferencesKey("app_language")
+        val WRANGLER_MODEL = stringPreferencesKey("wrangler_model")
     }
 
     val preferencesFlow: Flow<RigPreferences> = context.rigDataStore.data.map { prefs ->
@@ -62,14 +64,19 @@ class RigPreferencesRepository(private val context: Context) {
         } else {
             defaultLang
         }
+        val modelName = prefs[Keys.WRANGLER_MODEL] ?: WranglerModel.JK.name
+        val resolvedModel = WranglerModel.entries.firstOrNull { it.name == modelName }
+            ?: WranglerModel.JK
+        val resolvedEngine = JkEngineProfile.entries.firstOrNull { it.name == engineName }
+            ?: JkEngineProfile.defaultForModel(resolvedModel)
         RigPreferences(
-            rigNickname = prefs[Keys.RIG_NICKNAME] ?: "Wrangler JK",
-            engineProfile = JkEngineProfile.entries.firstOrNull { it.name == engineName }
-                ?: JkEngineProfile.PENTASTAR_3_6,
+            wranglerModel = resolvedModel,
+            rigNickname = prefs[Keys.RIG_NICKNAME] ?: resolvedModel.defaultNickname,
+            engineProfile = resolvedEngine,
             unitSystem = UnitSystem.entries.firstOrNull { it.name == unitName }
                 ?: UnitSystem.METRIC,
             tireSizeInches = prefs[Keys.TIRE_SIZE] ?: "35\"",
-            stockTireInches = prefs[Keys.STOCK_TIRE_INCHES] ?: 32.0f,
+            stockTireInches = prefs[Keys.STOCK_TIRE_INCHES] ?: resolvedModel.defaultStockTireInches,
             axleGearRatio = prefs[Keys.AXLE_RATIO] ?: "4.10",
             coolantWarnCelsius = prefs[Keys.COOLANT_WARN_C] ?: 108,
             lowBatteryVolts = prefs[Keys.LOW_BATT_VOLTS] ?: 11.8f,
@@ -89,6 +96,29 @@ class RigPreferencesRepository(private val context: Context) {
             selectedDiagnosticTestsCsv = prefs[Keys.SELECTED_DIAG_TESTS] ?: "",
             appLanguage = resolvedLanguage
         )
+    }
+
+    suspend fun setWranglerModel(model: WranglerModel) {
+        context.rigDataStore.edit { prefs ->
+            prefs[Keys.WRANGLER_MODEL] = model.name
+            val currentEngine = prefs[Keys.ENGINE_PROFILE]?.let { name ->
+                JkEngineProfile.entries.firstOrNull { it.name == name }
+            }
+            if (currentEngine == null || currentEngine.model != model) {
+                prefs[Keys.ENGINE_PROFILE] = JkEngineProfile.defaultForModel(model).name
+            }
+            val currentNick = prefs[Keys.RIG_NICKNAME]
+            if (currentNick.isNullOrBlank() ||
+                currentNick == WranglerModel.JK.defaultNickname ||
+                currentNick == WranglerModel.JL.defaultNickname
+            ) {
+                prefs[Keys.RIG_NICKNAME] = model.defaultNickname
+            }
+            val currentStock = prefs[Keys.STOCK_TIRE_INCHES]
+            if (currentStock == null || currentStock == 32.0f || currentStock == 33.0f) {
+                prefs[Keys.STOCK_TIRE_INCHES] = model.defaultStockTireInches
+            }
+        }
     }
 
     suspend fun updateRigDetails(nickname: String, tireSize: String, axleRatio: String) {

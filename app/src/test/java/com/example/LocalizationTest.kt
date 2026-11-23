@@ -4,6 +4,9 @@ import com.example.obd.AppLanguage
 import com.example.obd.DiagnosticCategory
 import com.example.obd.DiagnosticReadingStatus
 import com.example.obd.DiagnosticTestId
+import com.example.obd.JkEngineProfile
+import com.example.obd.JkSubsystem
+import com.example.obd.WranglerModel
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.DiagnosticStrings
 import org.junit.Assert.assertEquals
@@ -27,14 +30,14 @@ class LocalizationTest {
     }
 
     @Test
-    fun diagnosticStrings_coverAll43TestsAnd6CategoriesInHebrew() {
+    fun diagnosticStrings_coverAll50TestsAnd6CategoriesInHebrew() {
         DiagnosticCategory.entries.forEach { category ->
             val heCat = DiagnosticStrings.categoryTitle(category, AppLanguage.HEBREW)
             assertTrue("Missing Hebrew category title for $category", heCat.isNotBlank())
             assertNotEquals("Untranslated category $category", category.title, heCat)
         }
 
-        assertEquals(43, DiagnosticTestId.entries.size)
+        assertEquals(50, DiagnosticTestId.entries.size)
         DiagnosticTestId.entries.forEach { test ->
             val heTitle = DiagnosticStrings.testTitle(test, AppLanguage.HEBREW)
             assertTrue("Missing Hebrew title for $test", heTitle.isNotBlank())
@@ -45,5 +48,25 @@ class LocalizationTest {
             assertTrue(DiagnosticStrings.statusBadge(status, isAlert = false, lang = AppLanguage.HEBREW).isNotBlank())
             assertTrue(DiagnosticStrings.statusBadge(status, isAlert = true, lang = AppLanguage.HEBREW).isNotBlank())
         }
+    }
+
+    @Test
+    fun appStrings_coverAllModelsEnginesAndSubsystemsInEnglishAndHebrew() {
+        val en = AppStrings.forLanguage(AppLanguage.ENGLISH)
+        val he = AppStrings.forLanguage(AppLanguage.HEBREW)
+
+        WranglerModel.entries.forEach { model ->
+            assertTrue(en.modelChipLabel(model).contains(model.code))
+            assertTrue(he.modelChipLabel(model).contains(model.code))
+        }
+
+        JkEngineProfile.entries.forEach { profile ->
+            assertTrue(en.engineChipLabel(profile).isNotBlank())
+            assertTrue(he.engineChipLabel(profile).isNotBlank())
+        }
+
+        assertEquals("TIPM / CAN", en.subsystemLabel(JkSubsystem.TIPM_NETWORK, WranglerModel.JK))
+        assertEquals("BCM / SGW / CAN", en.subsystemLabel(JkSubsystem.TIPM_NETWORK, WranglerModel.JL))
+        assertEquals("BCM / SGW / CAN", he.subsystemLabel(JkSubsystem.TIPM_NETWORK, WranglerModel.JL))
     }
 }

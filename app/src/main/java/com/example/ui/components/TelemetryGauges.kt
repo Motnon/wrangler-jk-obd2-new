@@ -156,7 +156,7 @@ fun EcuStatusBanner(
                     }
                     val displaySubStatus = when {
                         vinInfo != null && connectionStatus == ConnectionStatus.CONNECTED ->
-                            "${vinInfo.modelYear} JK • ${vinInfo.vin}"
+                            "${vinInfo.modelYear} ${vinInfo.detectedModel?.code ?: "Wrangler"} • ${vinInfo.vin}"
                         adapterName != null && connectionStatus == ConnectionStatus.CONNECTED ->
                             adapterName
                         statusMessage == "Ready to pair ELM327 adapter" -> strings.readyToPairStatus

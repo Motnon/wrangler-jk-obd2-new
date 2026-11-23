@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DirectionsCar
@@ -27,6 +29,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -60,6 +63,7 @@ import com.example.obd.NightModeSetting
 import com.example.obd.RigPreferences
 import com.example.obd.UnitSystem
 import com.example.obd.VinInfo
+import com.example.obd.WranglerModel
 import com.example.sensors.GpsTelemetryState
 import com.example.sensors.SolarSchedule
 import com.example.ui.components.DisplayAndNightModeCard
@@ -86,6 +90,7 @@ fun GarageScreen(
     hasFineLocationPermission: Boolean,
     scanHistory: List<ScanRecordEntity>,
     onUpdateRigDetails: (String, String, String) -> Unit,
+    onSelectWranglerModel: (WranglerModel) -> Unit,
     onSelectEngine: (JkEngineProfile) -> Unit,
     onSelectUnitSystem: (UnitSystem) -> Unit,
     onUpdateAlertThresholds: (Int, Float) -> Unit,
@@ -178,8 +183,10 @@ fun GarageScreen(
                                 color = OverlandAmber
                             )
                             if (vinInfo != null) {
+                                val modelTag = vinInfo.detectedModel?.code ?: rigPrefs.wranglerModel.code
+                                val engineText = vinInfo.engineHint?.let { " • $it" } ?: ""
                                 Text(
-                                    text = "${strings.vinPrefix} ${vinInfo.vin} (${vinInfo.modelYear} • ${vinInfo.plantSummary})",
+                                    text = "${strings.vinPrefix} ${vinInfo.vin} (${vinInfo.modelYear} $modelTag • ${vinInfo.plantSummary}$engineText)",
                                     fontFamily = JetBrainsMonoFontFamily,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TrailSage
@@ -195,7 +202,7 @@ fun GarageScreen(
                     onSelectLanguage = onSelectAppLanguage
                 )
 
-                // JK Rig & Powertrain Configuration
+                // JK / JL Rig & Powertrain Configuration
                 Surface(
                     shape = MaterialTheme.shapes.large,
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -214,17 +221,62 @@ fun GarageScreen(
                             )
                             Spacer(modifier = Modifier.size(8.dp))
                             Text(
-                                text = strings.powertrainHeader,
+                                text = String.format(Locale.US, strings.powertrainHeaderFormat, rigPrefs.wranglerModel.code),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
 
+                        Text(
+                            text = strings.wranglerModelLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            JkEngineProfile.entries.forEach { profile ->
+                            WranglerModel.entries.forEach { model ->
+                                FilterChip(
+                                    selected = rigPrefs.wranglerModel == model,
+                                    onClick = { onSelectWranglerModel(model) },
+                                    label = { Text(text = strings.modelChipLabel(model)) },
+                                    modifier = Modifier.testTag("model_chip_${model.name.lowercase()}")
+                                )
+                            }
+                        }
+
+                        val detectedModel = vinInfo?.detectedModel
+                        if (detectedModel != null && detectedModel != rigPrefs.wranglerModel) {
+                            OutlinedButton(
+                                onClick = { onSelectWranglerModel(detectedModel) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("vin_switch_model_button")
+                            ) {
+                                val switchText = if (strings.language == AppLanguage.HEBREW) {
+                                    "VIN זיהה ${strings.modelChipLabel(detectedModel)} (${vinInfo.modelYear}) — החלף פרופיל"
+                                } else {
+                                    "VIN detected ${detectedModel.displayName} (${vinInfo.modelYear}) — Switch profile"
+                                }
+                                Text(
+                                    text = switchText,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
+
+                        val availableEngines = remember(rigPrefs.wranglerModel) {
+                            JkEngineProfile.forModel(rigPrefs.wranglerModel)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            availableEngines.forEach { profile ->
                                 FilterChip(
                                     selected = rigPrefs.engineProfile == profile,
                                     onClick = { onSelectEngine(profile) },

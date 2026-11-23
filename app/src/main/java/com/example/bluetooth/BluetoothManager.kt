@@ -78,7 +78,7 @@ class BluetoothManager(private val context: Context) {
             "ATL0",   // Linefeeds OFF
             "ATS0",   // Spaces OFF
             "ATH0",   // Headers OFF
-            "ATSP6",  // ISO 15765-4 CAN 11-bit 500kbps (Wrangler JK)
+            "ATSP6",  // ISO 15765-4 CAN 11-bit 500kbps (Wrangler JK & JL)
             "ATCAF1", // CAN Auto Formatting ON
             "0100"    // Supported PIDs probe
         )
@@ -133,13 +133,18 @@ class BluetoothManager(private val context: Context) {
     private val _vinInfo = MutableStateFlow<VinInfo?>(null)
     val vinInfo: StateFlow<VinInfo?> = _vinInfo.asStateFlow()
 
+    private val _sgwBlockedEvent = MutableStateFlow(false)
+    val sgwBlockedEvent: StateFlow<Boolean> = _sgwBlockedEvent.asStateFlow()
+
+    private val unsupportedStandardCommands = mutableSetOf<String>()
+
     private val _terminalLogs = MutableStateFlow<List<TerminalEntry>>(
         listOf(
             TerminalEntry(
                 id = 0L,
                 timestamp = timeFormat.format(Date()),
                 direction = TerminalDirection.INFO,
-                message = "ELM327 console ready. Pair Bluetooth OBD-II dongle to begin JK CAN-Bus session."
+                message = "ELM327 console ready. Pair Bluetooth OBD-II dongle to begin Wrangler JK/JL CAN-Bus session."
             )
         )
     )
@@ -425,7 +430,7 @@ class BluetoothManager(private val context: Context) {
             }
 
             _connectionStatus.value = ConnectionStatus.INITIALIZING
-            _statusMessage.value = "Initializing ELM327 & Wrangler JK CAN-Bus (ATSP6)…"
+            _statusMessage.value = "Initializing ELM327 & Wrangler CAN-Bus (ATSP6)…"
             val initOk = initializeElm327()
             if (!initOk) {
                 failConnection("Adapter did not respond to ATZ/ATSP6 initialization")
@@ -434,10 +439,12 @@ class BluetoothManager(private val context: Context) {
 
             _connectionStatus.value = ConnectionStatus.CONNECTED
             _statusMessage.value = "ECU Link Active — ${deviceItem.name}"
+            unsupportedStandardCommands.clear()
+            _sgwBlockedEvent.value = false
             publishDiagnosticReadings()
             appendTerminal(
                 TerminalDirection.INFO,
-                "ELM327 initialized (ISO 15765-4 CAN 11-bit 500kbps). Streaming Wrangler JK PIDs."
+                "ELM327 initialized (ISO 15765-4 CAN 11-bit 500kbps). Streaming Wrangler PIDs."
             )
 
             queryVinInternal()
@@ -483,6 +490,8 @@ class BluetoothManager(private val context: Context) {
             _statusMessage.value = "Disconnected from OBD-II adapter"
             _telemetry.value = LiveTelemetry()
             _diagnosticCycleCount.value = 0L
+            unsupportedStandardCommands.clear()
+            _sgwBlockedEvent.value = false
             diagnosticScanEngine.resetSession()
             publishDiagnosticReadings()
             appendTerminal(TerminalDirection.INFO, "OBD-II session closed.")
@@ -831,6 +840,14 @@ class BluetoothManager(private val context: Context) {
                         applyPid(sendCommandRaw("0107", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x07)
                         applyPid(sendCommandRaw("0146", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x46)
                         applyPid(sendCommandRaw("0101", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x01)
+                        pollOptionalStandardPid("0133", expectedPid = 0x33)
+                        pollOptionalStandardPid("015C", expectedPid = 0x5C)
+                        pollOptionalStandardPid("0123", expectedPid = 0x23)
+                        pollOptionalStandardPid("0170", expectedPid = 0x70)
+                        pollOptionalStandardPid("015B", expectedPid = 0x5B)
+                        if (tick == 0) {
+                            pollOptionalStandardPid("0151", expectedPid = 0x51)
+                        }
                     }
                     if (tick == 4 && _vinInfo.value == null) {
                         queryVinInternal()
@@ -841,6 +858,16 @@ class BluetoothManager(private val context: Context) {
                 }
             }
         }
+    }
+
+    private suspend fun pollOptionalStandardPid(cmd: String, expectedPid: Int) {
+        if (cmd in unsupportedStandardCommands) return
+        val raw = sendCommandRaw(cmd, POLL_COMMAND_TIMEOUT_MS, logTerminal = false) ?: return
+        if (Elm327Protocol.isNegativeResponse(raw)) {
+            unsupportedStandardCommands.add(cmd)
+            return
+        }
+        applyPid(raw, expectedPid = expectedPid)
     }
 
     private fun applyPid(raw: String?, expectedPid: Int? = null) {
@@ -857,11 +884,19 @@ class BluetoothManager(private val context: Context) {
                 is Elm327Protocol.DecodedPid.Rpm -> state.copy(rpm = decoded.rpm, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.Speed -> state.copy(speedKmh = decoded.kmh, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.CoolantTemp -> state.copy(coolantCelsius = decoded.celsius, lastUpdatedMs = now)
+                is Elm327Protocol.DecodedPid.EngineOilTemp -> state.copy(engineOilTempCelsius = decoded.celsius, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.IntakeAirTemp -> state.copy(intakeAirCelsius = decoded.celsius, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.AmbientAirTemp -> state.copy(ambientAirCelsius = decoded.celsius, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.ThrottlePosition -> state.copy(throttlePercent = decoded.percent, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.EngineLoad -> state.copy(engineLoadPercent = decoded.percent, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.ManifoldPressure -> state.copy(manifoldKpa = decoded.kpa, lastUpdatedMs = now)
+                is Elm327Protocol.DecodedPid.BarometricPressure -> state.copy(barometricKpa = decoded.kpa, lastUpdatedMs = now)
+                is Elm327Protocol.DecodedPid.FuelPressure -> state.copy(fuelRailPressureKpa = decoded.kpa, lastUpdatedMs = now)
+                is Elm327Protocol.DecodedPid.FuelRailPressureRel -> state.copy(fuelRailPressureKpa = decoded.kpa.toInt(), lastUpdatedMs = now)
+                is Elm327Protocol.DecodedPid.FuelRailPressureGauge -> state.copy(fuelRailPressureKpa = decoded.kpa, lastUpdatedMs = now)
+                is Elm327Protocol.DecodedPid.BoostPressureControl -> state.copy(boostPressureKpa = decoded.kpa.toInt(), lastUpdatedMs = now)
+                is Elm327Protocol.DecodedPid.HybridBatteryRemaining -> state.copy(hybridBatteryRemainingPct = decoded.percent, lastUpdatedMs = now)
+                is Elm327Protocol.DecodedPid.FuelType -> state.copy(fuelTypeName = decoded.typeName, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.ShortTermFuelTrim -> state.copy(shortTermFuelTrimB1 = decoded.percent, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.LongTermFuelTrim -> state.copy(longTermFuelTrimB1 = decoded.percent, lastUpdatedMs = now)
                 is Elm327Protocol.DecodedPid.FuelLevel -> state.copy(fuelLevelPercent = decoded.percent, lastUpdatedMs = now)
@@ -923,10 +958,21 @@ class BluetoothManager(private val context: Context) {
     fun clearDtcs() {
         scope.launch {
             if (_connectionStatus.value != ConnectionStatus.CONNECTED) return@launch
-            sendCommandRaw("04", POLL_COMMAND_TIMEOUT_MS, logTerminal = true)
+            val clearResp = sendCommandRaw("04", POLL_COMMAND_TIMEOUT_MS, logTerminal = true)
+            if (clearResp != null && Elm327Protocol.isSecurityAccessDenied(clearResp)) {
+                _sgwBlockedEvent.value = true
+                appendTerminal(
+                    TerminalDirection.ERROR,
+                    "JL Security Gateway (SGW) blocked Mode 04 clear (NRC 0x33). Use 12+8 SGW bypass cable or AutoAuth."
+                )
+            }
             delay(300L)
             readDtcsInternal()
         }
+    }
+
+    fun consumeSgwBlockedEvent() {
+        _sgwBlockedEvent.value = false
     }
 
     private suspend fun queryVinInternal() {

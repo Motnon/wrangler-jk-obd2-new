@@ -308,14 +308,19 @@ private fun ChecklistSelectionView(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val filterPlaceholder = String.format(
+                Locale.US,
+                strings.filterPidsPlaceholder,
+                DiagnosticTestId.entries.size
+            )
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
-                placeholder = { Text(strings.filterPidsPlaceholder, fontSize = 13.sp) },
+                placeholder = { Text(filterPlaceholder, fontSize = 13.sp) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Rounded.Search,
-                        contentDescription = strings.filterPidsPlaceholder,
+                        contentDescription = filterPlaceholder,
                         modifier = Modifier.size(18.dp)
                     )
                 },

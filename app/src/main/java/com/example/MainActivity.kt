@@ -212,6 +212,7 @@ fun WranglerObdApp(
     val rigPrefs by viewModel.rigPreferences.collectAsStateWithLifecycle()
     val scanHistory by viewModel.scanHistory.collectAsStateWithLifecycle()
     val dtcSearchQuery by viewModel.dtcSearchQuery.collectAsStateWithLifecycle()
+    val selectedDtcModelFilter by viewModel.selectedDtcModelFilter.collectAsStateWithLifecycle()
     val selectedSubsystem by viewModel.selectedSubsystem.collectAsStateWithLifecycle()
     val catalogCodes by viewModel.filteredCatalogCodes.collectAsStateWithLifecycle()
     val appliedDiagnosticTests by viewModel.appliedDiagnosticTests.collectAsStateWithLifecycle()
@@ -521,9 +522,12 @@ fun WranglerObdApp(
                             activeDtcs = activeDtcs,
                             pendingDtcs = pendingDtcs,
                             searchQuery = dtcSearchQuery,
+                            wranglerModel = rigPrefs.wranglerModel,
+                            selectedModelFilter = selectedDtcModelFilter,
                             selectedSubsystem = selectedSubsystem,
                             catalogCodes = catalogCodes,
                             onSearchQueryChange = viewModel::updateDtcSearchQuery,
+                            onSelectModelFilter = viewModel::selectDtcModelFilter,
                             onSelectSubsystem = viewModel::selectSubsystem,
                             onScanEcu = viewModel::readDtcsFromEcu,
                             onClearEcuCodes = viewModel::clearDtcsOnEcu,
@@ -552,6 +556,7 @@ fun WranglerObdApp(
                             hasFineLocationPermission = viewModel.hasFineLocationPermission(),
                             scanHistory = scanHistory,
                             onUpdateRigDetails = viewModel::updateRigDetails,
+                            onSelectWranglerModel = viewModel::setWranglerModel,
                             onSelectEngine = viewModel::setEngineProfile,
                             onSelectUnitSystem = viewModel::setUnitSystem,
                             onUpdateAlertThresholds = viewModel::setAlertThresholds,

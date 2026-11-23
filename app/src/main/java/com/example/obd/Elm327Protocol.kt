@@ -10,11 +10,17 @@ object Elm327Protocol {
         data class Rpm(val rpm: Int) : DecodedPid()
         data class Speed(val kmh: Int) : DecodedPid()
         data class CoolantTemp(val celsius: Int) : DecodedPid()
+        data class EngineOilTemp(val celsius: Int) : DecodedPid()
         data class IntakeAirTemp(val celsius: Int) : DecodedPid()
         data class AmbientAirTemp(val celsius: Int) : DecodedPid()
+        data class ChargeAirCoolerTemp(val celsius: Int) : DecodedPid()
         data class CatalystTempB1(val celsius: Float) : DecodedPid()
         data class CatalystTempB2(val celsius: Float) : DecodedPid()
         data class BarometricPressure(val kpa: Int) : DecodedPid()
+        data class FuelPressure(val kpa: Int) : DecodedPid()
+        data class FuelRailPressureRel(val kpa: Float) : DecodedPid()
+        data class FuelRailPressureGauge(val kpa: Int) : DecodedPid()
+        data class BoostPressureControl(val kpa: Float) : DecodedPid()
         data class ThrottlePosition(val percent: Float) : DecodedPid()
         data class RelativeThrottlePosition(val percent: Float) : DecodedPid()
         data class AbsoluteThrottleB(val percent: Float) : DecodedPid()
@@ -30,6 +36,8 @@ object Elm327Protocol {
         data class LongTermFuelTrimB2(val percent: Float) : DecodedPid()
         data class FuelAirEquivRatio(val lambda: Float) : DecodedPid()
         data class FuelLevel(val percent: Float) : DecodedPid()
+        data class FuelType(val typeName: String) : DecodedPid()
+        data class HybridBatteryRemaining(val percent: Float) : DecodedPid()
         data class OxygenSensorReading(
             val pid: Int,
             val voltage: Float,
@@ -106,6 +114,26 @@ object Elm327Protocol {
         return sawNegative && !sawPositive
     }
 
+    /**
+     * Detects 2018+ FCA/Stellantis Security Gateway (SGW) denial (NRC 0x33 Security Access Denied
+     * or NRC 0x22 Conditions Not Correct on Mode 04 clear / protected diagnostic routines).
+     */
+    fun isSecurityAccessDenied(raw: String): Boolean {
+        val lines = sanitizeResponse(raw)
+            .replace(Regex("""\b\d+:"""), "\n")
+            .lines()
+        for (line in lines) {
+            val bytes = extractHexBytes(line.replace(Regex("""^\d+:"""), "").trim())
+            if (bytes.size >= 3 && bytes[0] == 0x7F && (bytes[2] == 0x33 || bytes[2] == 0x22)) {
+                return true
+            }
+            if (bytes.size >= 4 && bytes[0] in 1..7 && bytes[1] == 0x7F && (bytes[3] == 0x33 || bytes[3] == 0x22)) {
+                return true
+            }
+        }
+        return false
+    }
+
     fun parseVoltageResponse(raw: String): Float? {
         val cleaned = sanitizeResponse(raw)
         val match = Regex("""(\d+(?:\.\d+)?)\s*V""", RegexOption.IGNORE_CASE).find(cleaned)
@@ -175,6 +203,9 @@ object Elm327Protocol {
                 0x09 -> if (data.isNotEmpty()) {
                     DecodedPid.LongTermFuelTrimB2(((data[0] - 128) * 100f) / 128f)
                 } else null
+                0x0A -> if (data.isNotEmpty()) {
+                    DecodedPid.FuelPressure(data[0] * 3)
+                } else null
                 0x0B -> if (data.isNotEmpty()) {
                     DecodedPid.ManifoldPressure(data[0])
                 } else null
@@ -203,6 +234,12 @@ object Elm327Protocol {
                 } else null
                 0x21 -> if (data.size >= 2) {
                     DecodedPid.DistanceWithMil((data[0] * 256) + data[1])
+                } else null
+                0x22 -> if (data.size >= 2) {
+                    DecodedPid.FuelRailPressureRel(((data[0] * 256) + data[1]) * 0.079f)
+                } else null
+                0x23 -> if (data.size >= 2) {
+                    DecodedPid.FuelRailPressureGauge(((data[0] * 256) + data[1]) * 10)
                 } else null
                 0x2C -> if (data.isNotEmpty()) {
                     DecodedPid.CommandedEgr((data[0] * 100f) / 255f)
@@ -257,6 +294,23 @@ object Elm327Protocol {
                 } else null
                 0x4C -> if (data.isNotEmpty()) {
                     DecodedPid.CommandedThrottleActuator((data[0] * 100f) / 255f)
+                } else null
+                0x51 -> if (data.isNotEmpty()) {
+                    DecodedPid.FuelType(decodeFuelType(data[0]))
+                } else null
+                0x5B -> if (data.isNotEmpty()) {
+                    DecodedPid.HybridBatteryRemaining((data[0] * 100f) / 255f)
+                } else null
+                0x5C -> if (data.isNotEmpty()) {
+                    DecodedPid.EngineOilTemp(data[0] - 40)
+                } else null
+                0x70 -> if (data.size >= 5 && (data[0] and 0x02) != 0) {
+                    DecodedPid.BoostPressureControl(((data[3] * 256) + data[4]) * 0.03125f)
+                } else if (data.size >= 3) {
+                    DecodedPid.BoostPressureControl(((data[1] * 256) + data[2]) * 0.03125f)
+                } else null
+                0x77 -> if (data.size >= 2) {
+                    DecodedPid.ChargeAirCoolerTemp(data[1] - 40)
                 } else null
                 else -> null
             }
@@ -442,17 +496,58 @@ object Elm327Protocol {
             'G' -> "2016"
             'H' -> "2017"
             'J' -> "2018"
+            'K' -> "2019"
+            'L' -> "2020"
+            'M' -> "2021"
+            'N' -> "2022"
+            'P' -> "2023"
+            'R' -> "2024"
+            'S' -> "2025"
+            'T' -> "2026"
             else -> "Year Code $yearChar"
         }
-        val isJk = yearChar in listOf('7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J') &&
-            (vin.startsWith("1J4") || vin.startsWith("1C4") || vin.startsWith("1J8"))
-        val plant = if (vin.getOrNull(10) == 'L') "Toledo South Assembly, OH" else "Chrysler/FCA Plant ${vin.getOrNull(10)}"
+        val isJeepPrefix = vin.startsWith("1J4") || vin.startsWith("1C4") || vin.startsWith("1J8")
+        val detectedModel: WranglerModel? = when {
+            !isJeepPrefix -> null
+            vin.getOrNull(5) == 'X' || yearChar in listOf('K', 'L', 'M', 'N', 'P', 'R', 'S', 'T') ->
+                WranglerModel.JL
+            yearChar in listOf('7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J') ->
+                WranglerModel.JK
+            else -> null
+        }
+        val isJk = detectedModel == WranglerModel.JK
+        val engineHint = when (vin.getOrNull(7)) {
+            '1' -> "3.8L V6"
+            'G' -> "3.6L Pentastar V6"
+            'N', 'A', '5' -> "2.0L Turbo I4"
+            'P' -> "2.0L 4xe PHEV"
+            'M' -> "3.0L EcoDiesel V6"
+            'J' -> "6.4L 392 HEMI V8"
+            else -> null
+        }
+        val plant = when {
+            vin.getOrNull(10) == 'L' && detectedModel == WranglerModel.JL -> "Toledo North Assembly, OH"
+            vin.getOrNull(10) == 'L' -> "Toledo South Assembly, OH"
+            else -> "FCA / Stellantis Plant ${vin.getOrNull(10)}"
+        }
         return VinInfo(
             vin = vin,
             modelYear = modelYear,
             isWranglerJk = isJk,
-            plantSummary = plant
+            plantSummary = plant,
+            detectedModel = detectedModel,
+            engineHint = engineHint
         )
+    }
+
+    private fun decodeFuelType(code: Int): String = when (code) {
+        0x01 -> "Gasoline"
+        0x04 -> "Diesel"
+        0x11 -> "Hybrid Gasoline"
+        0x13 -> "Hybrid Diesel"
+        0x17 -> "PHEV (4xe)"
+        0x08 -> "Electric"
+        else -> "Type 0x${code.toString(16).uppercase()}"
     }
 
     private fun findHeaderIndex(bytes: List<Int>, target: Int): Int {

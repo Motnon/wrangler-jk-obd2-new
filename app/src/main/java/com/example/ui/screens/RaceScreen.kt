@@ -127,16 +127,8 @@ fun RaceScreen(
         windowMap.putAll(decoded)
     }
 
-    val maxRpmScale = when (rigPrefs.engineProfile) {
-        JkEngineProfile.PENTASTAR_3_6 -> 7000f
-        JkEngineProfile.EGH_3_8 -> 6000f
-        JkEngineProfile.CRD_2_8 -> 5000f
-    }
-    val rpmRedline = when (rigPrefs.engineProfile) {
-        JkEngineProfile.PENTASTAR_3_6 -> 6400f
-        JkEngineProfile.EGH_3_8 -> 5500f
-        JkEngineProfile.CRD_2_8 -> 4200f
-    }
+    val maxRpmScale = rigPrefs.engineProfile.maxRpmScale
+    val rpmRedline = rigPrefs.engineProfile.redlineRpm
 
     val speedDisplayValue: Float? = calibratedSpeedKph?.toFloat()
     val speedMax = 200f
@@ -396,8 +388,9 @@ fun RaceScreen(
                                     color = palette.zone2
                                 )
                                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    val modelTag = vinInfo.detectedModel?.code ?: rigPrefs.wranglerModel.code
                                     Text(
-                                        text = "${vinInfo.vin} • ${vinInfo.modelYear} JK",
+                                        text = "${vinInfo.vin} • ${vinInfo.modelYear} $modelTag",
                                         fontFamily = JetBrainsMonoFontFamily,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp,

@@ -68,16 +68,8 @@ fun CockpitScreen(
 ) {
     val strings = LocalAppStrings.current
     val isImperialMap = rigPrefs.unitSystem == UnitSystem.IMPERIAL
-    val redlineRpm = when (rigPrefs.engineProfile) {
-        JkEngineProfile.PENTASTAR_3_6 -> 6400f
-        JkEngineProfile.EGH_3_8 -> 5600f
-        JkEngineProfile.CRD_2_8 -> 4200f
-    }
-    val maxRpmScale = when (rigPrefs.engineProfile) {
-        JkEngineProfile.PENTASTAR_3_6 -> 7000f
-        JkEngineProfile.EGH_3_8 -> 6500f
-        JkEngineProfile.CRD_2_8 -> 5000f
-    }
+    val redlineRpm = rigPrefs.engineProfile.redlineRpm
+    val maxRpmScale = rigPrefs.engineProfile.maxRpmScale
 
     // Coolant temp is always Celsius (°C)
     val coolantDisplayValue: Float? = telemetry.coolantCelsius?.toFloat()

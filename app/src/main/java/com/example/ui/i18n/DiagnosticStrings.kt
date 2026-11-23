@@ -29,6 +29,9 @@ object DiagnosticStrings {
             DiagnosticTestId.CATALYST_TEMP_B1_B2 -> "טמפרטורת ממיר קטליטי (Bank 1 ו-Bank 2)"
             DiagnosticTestId.BAROMETRIC_PRESSURE -> "לחץ ברומטרי מוחלט"
             DiagnosticTestId.MANIFOLD_MAP -> "לחץ מוחלט בסעפת יניקה (MAP)"
+            DiagnosticTestId.ENGINE_OIL_TEMP -> "טמפרטורת שמן מנוע (JL)"
+            DiagnosticTestId.TURBO_BOOST_PRESSURE -> "לחץ גדישת טורבו (JL 2.0T / דיזל)"
+            DiagnosticTestId.CHARGE_AIR_COOLER_TEMP -> "טמפ' אוויר מצנן ביניים (JL 2.0T / דיזל)"
 
             // 2. Throttle & Pedal System (ETC / TPS)
             DiagnosticTestId.THROTTLE_POSITION -> "מיקום מצערת"
@@ -43,6 +46,7 @@ object DiagnosticStrings {
             DiagnosticTestId.SHORT_TERM_FUEL_TRIM_B1_B2 -> "תיקון דלק לטווח קצר (Bank 1 ו-Bank 2)"
             DiagnosticTestId.COMMANDED_EQUIV_RATIO -> "יחס תערובת אוויר-דלק מבוקש (Lambda)"
             DiagnosticTestId.FUEL_TANK_LEVEL -> "רמת דלק במיכל"
+            DiagnosticTestId.FUEL_RAIL_PRESSURE -> "לחץ מסילת דלק (JL GDI / דיזל)"
             DiagnosticTestId.O2_S1_B1S1_VOLTAGE -> "חיישן חמצן 1 (מתח) (Bank 1 Sensor 1)"
             DiagnosticTestId.O2_S1_B1S1_STFT -> "חיישן חמצן 1 (תיקון דלק קצר) (Bank 1 Sensor 1)"
             DiagnosticTestId.O2_S2_B1S2_VOLTAGE -> "חיישן חמצן 2 (מתח) (Bank 1 Sensor 2)"
@@ -60,6 +64,8 @@ object DiagnosticStrings {
             DiagnosticTestId.MISFIRE_CYL_4 -> "החטאות בעירה צילינדר 4 (בנזין)"
             DiagnosticTestId.MISFIRE_CYL_5 -> "החטאות בעירה צילינדר 5 (בנזין)"
             DiagnosticTestId.MISFIRE_CYL_6 -> "החטאות בעירה צילינדר 6 (בנזין)"
+            DiagnosticTestId.MISFIRE_CYL_7 -> "החטאות בעירה צילינדר 7 (JL 392 HEMI V8)"
+            DiagnosticTestId.MISFIRE_CYL_8 -> "החטאות בעירה צילינדר 8 (JL 392 HEMI V8)"
 
             // 5. Emissions & EGR / EVAP
             DiagnosticTestId.COMMANDED_EGR -> "פקודת EGR"
@@ -76,6 +82,7 @@ object DiagnosticStrings {
             DiagnosticTestId.DISTANCE_SINCE_CODES_CLEARED -> "מרחק מאיפוס קודי תקלה"
             DiagnosticTestId.DISTANCE_WITH_MIL_ON -> "מרחק נסיעה עם נורת תקלה דולקת"
             DiagnosticTestId.WARM_UPS_SINCE_CODES_CLEARED -> "מחזורי חימום מאיפוס תקלות"
+            DiagnosticTestId.HYBRID_BATTERY_LIFE -> "קיבולת סוללת מתח גבוה (JL 4xe)"
         }
     }
 

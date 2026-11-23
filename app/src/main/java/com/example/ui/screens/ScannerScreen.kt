@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -56,6 +57,7 @@ import com.example.obd.DtcSeverity
 import com.example.obd.JkDiagnosticLibrary
 import com.example.obd.JkSubsystem
 import com.example.obd.LiveTelemetry
+import com.example.obd.WranglerModel
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.CautionYellow
 import com.example.ui.theme.FaultCrimson
@@ -71,9 +73,12 @@ fun ScannerScreen(
     activeDtcs: List<String>,
     pendingDtcs: List<String>,
     searchQuery: String,
+    wranglerModel: WranglerModel,
+    selectedModelFilter: WranglerModel?,
     selectedSubsystem: JkSubsystem,
     catalogCodes: List<DtcCodeInfo>,
     onSearchQueryChange: (String) -> Unit,
+    onSelectModelFilter: (WranglerModel?) -> Unit,
     onSelectSubsystem: (JkSubsystem) -> Unit,
     onScanEcu: () -> Unit,
     onClearEcuCodes: () -> Unit,
@@ -276,6 +281,43 @@ fun ScannerScreen(
                     }
                 }
 
+                if (wranglerModel == WranglerModel.JL) {
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = CautionYellow.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, CautionYellow.copy(alpha = 0.45f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("jl_sgw_notice_card")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Shield,
+                                contentDescription = strings.jlSgwBannerTitle,
+                                tint = CautionYellow,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(
+                                    text = strings.jlSgwBannerTitle,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = strings.jlSgwBannerBody,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Live ECU Detected Codes
                 if (activeDtcs.isNotEmpty() || pendingDtcs.isNotEmpty()) {
                     Text(
@@ -285,7 +327,9 @@ fun ScannerScreen(
                     )
 
                     activeDtcs.forEach { code ->
-                        val info = remember(code) { JkDiagnosticLibrary.lookupCode(code) }
+                        val info = remember(code, wranglerModel) {
+                            JkDiagnosticLibrary.lookupCode(code, wranglerModel)
+                        }
                         DtcCodeCard(
                             info = info,
                             badgeLabel = strings.activeMode03Badge,
@@ -296,7 +340,9 @@ fun ScannerScreen(
                         )
                     }
                     pendingDtcs.forEach { code ->
-                        val info = remember(code) { JkDiagnosticLibrary.lookupCode(code) }
+                        val info = remember(code, wranglerModel) {
+                            JkDiagnosticLibrary.lookupCode(code, wranglerModel)
+                        }
                         DtcCodeCard(
                             info = info,
                             badgeLabel = strings.pendingMode07Badge,
@@ -308,9 +354,14 @@ fun ScannerScreen(
                     }
                 }
 
-                // Wrangler JK Offline DTC Encyclopedia
+                // Wrangler JK / JL Offline DTC Encyclopedia
+                val encyclopediaTitle = if (selectedModelFilter == null) {
+                    strings.faultEncyclopediaHeader
+                } else {
+                    String.format(Locale.US, strings.faultEncyclopediaFormat, selectedModelFilter.code)
+                }
                 Text(
-                    text = strings.faultEncyclopediaHeader,
+                    text = encyclopediaTitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -328,6 +379,30 @@ fun ScannerScreen(
                         .testTag("dtc_search_input")
                 )
 
+                // Model Generation Filter Row (All / JK / JL)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedModelFilter == null,
+                        onClick = { onSelectModelFilter(null) },
+                        label = { Text(strings.allModelsChip) },
+                        modifier = Modifier.testTag("dtc_model_chip_all")
+                    )
+                    WranglerModel.entries.forEach { model ->
+                        FilterChip(
+                            selected = selectedModelFilter == model,
+                            onClick = { onSelectModelFilter(model) },
+                            label = { Text(model.displayName) },
+                            modifier = Modifier.testTag("dtc_model_chip_${model.name.lowercase()}")
+                        )
+                    }
+                }
+
+                // Subsystem Filter Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -338,7 +413,7 @@ fun ScannerScreen(
                         FilterChip(
                             selected = selectedSubsystem == subsystem,
                             onClick = { onSelectSubsystem(subsystem) },
-                            label = { Text(strings.subsystemLabel(subsystem)) },
+                            label = { Text(strings.subsystemLabel(subsystem, selectedModelFilter ?: wranglerModel)) },
                             modifier = Modifier.testTag("subsystem_chip_${subsystem.name.lowercase()}")
                         )
                     }
@@ -349,7 +424,7 @@ fun ScannerScreen(
         items(catalogCodes, key = { it.code }) { info ->
             DtcCodeCard(
                 info = info,
-                badgeLabel = strings.subsystemLabel(info.subsystem).uppercase(),
+                badgeLabel = strings.subsystemLabel(info.subsystem, selectedModelFilter ?: wranglerModel).uppercase(),
                 isExpanded = expandedCode == info.code,
                 onToggle = {
                     expandedCode = if (expandedCode == info.code) null else info.code
@@ -409,6 +484,11 @@ private fun DtcCodeCard(
                         )
                     }
 
+                    val modelBadge = when {
+                        WranglerModel.JK in info.models && WranglerModel.JL in info.models -> "JK/JL"
+                        WranglerModel.JL in info.models -> "JL"
+                        else -> "JK"
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = info.title,
@@ -416,7 +496,7 @@ private fun DtcCodeCard(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "$badgeLabel • ${info.affectedEngines}",
+                            text = "[$modelBadge] $badgeLabel • ${info.affectedEngines}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -15,9 +15,9 @@ import org.junit.Test
 class DiagnosticScanEngineTest {
 
     @Test
-    fun `catalog contains all 43 tests across 6 categories and round-trips csv`() {
+    fun `catalog contains all 50 tests across 6 categories and round-trips csv`() {
         assertEquals(6, DiagnosticCategory.entries.size)
-        assertEquals(43, DiagnosticTestId.entries.size)
+        assertEquals(50, DiagnosticTestId.entries.size)
 
         val subset = setOf(
             DiagnosticTestId.CATALYST_TEMP_B1_B2,
@@ -161,5 +161,47 @@ class DiagnosticScanEngineTest {
         assertTrue(readings[DiagnosticTestId.MISFIRE_CYL_2]?.isAlert == true)
         assertEquals("01:00:50", readings[DiagnosticTestId.RUN_TIME_SINCE_START]?.formattedValue)
         assertEquals(DiagnosticReadingStatus.LIVE, readings[DiagnosticTestId.RUN_TIME_SINCE_START]?.status)
+    }
+
+    @Test
+    fun `scan engine plans, decodes, and formats Wrangler JL extended tests`() {
+        val engine = DiagnosticScanEngine()
+        val jlChosen = setOf(
+            DiagnosticTestId.ENGINE_OIL_TEMP,
+            DiagnosticTestId.TURBO_BOOST_PRESSURE,
+            DiagnosticTestId.CHARGE_AIR_COOLER_TEMP,
+            DiagnosticTestId.FUEL_RAIL_PRESSURE,
+            DiagnosticTestId.HYBRID_BATTERY_LIFE,
+            DiagnosticTestId.MISFIRE_CYL_7,
+            DiagnosticTestId.MISFIRE_CYL_8
+        )
+
+        val plan = engine.buildCommandPlan(jlChosen)
+        assertTrue("015C" in plan)
+        assertTrue("0170" in plan)
+        assertTrue("0177" in plan)
+        assertTrue("0123" in plan)
+        assertTrue("015B" in plan)
+        assertTrue("06A8" in plan)
+        assertTrue("06A9" in plan)
+
+        engine.processCommandResponse("015C", "41 5C 8C") // 100 C
+        engine.processCommandResponse("0170", "41 70 01 05 DC 00 00") // 46.9 kPa
+        engine.processCommandResponse("0177", "41 77 01 5A 00") // 50 C
+        engine.processCommandResponse("0123", "41 23 05 DC") // 15,000 kPa
+        engine.processCommandResponse("015B", "41 5B CC") // 80.0%
+        engine.processCommandResponse("06A8", "46 A8 0C 24 00 00 00 00 FF FF") // 0
+        engine.processCommandResponse("06A9", "46 A9 0C 24 00 02 00 00 FF FF") // 2 -> alert
+
+        val readings = engine.buildReadingsMap(jlChosen, isConnected = true)
+        assertEquals("100 °C", readings[DiagnosticTestId.ENGINE_OIL_TEMP]?.formattedValue)
+        assertEquals("46.9 kPa", readings[DiagnosticTestId.TURBO_BOOST_PRESSURE]?.formattedValue)
+        assertEquals("50 °C", readings[DiagnosticTestId.CHARGE_AIR_COOLER_TEMP]?.formattedValue)
+        assertEquals("15,000 kPa", readings[DiagnosticTestId.FUEL_RAIL_PRESSURE]?.formattedValue)
+        assertEquals("80.0%", readings[DiagnosticTestId.HYBRID_BATTERY_LIFE]?.formattedValue)
+        assertEquals("0", readings[DiagnosticTestId.MISFIRE_CYL_7]?.formattedValue)
+        assertFalse(readings[DiagnosticTestId.MISFIRE_CYL_7]?.isAlert == true)
+        assertEquals("2", readings[DiagnosticTestId.MISFIRE_CYL_8]?.formattedValue)
+        assertTrue(readings[DiagnosticTestId.MISFIRE_CYL_8]?.isAlert == true)
     }
 }

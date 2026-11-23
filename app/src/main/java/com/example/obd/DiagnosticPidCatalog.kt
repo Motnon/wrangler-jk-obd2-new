@@ -71,6 +71,30 @@ enum class DiagnosticTestId(
         primaryCommands = listOf("010B"),
         unit = "kPa"
     ),
+    ENGINE_OIL_TEMP(
+        key = "engine_oil_temp",
+        category = DiagnosticCategory.TEMPERATURES_PRESSURES,
+        title = "Engine oil temperature (JL)",
+        pidBadge = "015C",
+        primaryCommands = listOf("015C"),
+        unit = "°C"
+    ),
+    TURBO_BOOST_PRESSURE(
+        key = "turbo_boost",
+        category = DiagnosticCategory.TEMPERATURES_PRESSURES,
+        title = "Turbocharger boost pressure (JL 2.0T / EcoDiesel)",
+        pidBadge = "0170",
+        primaryCommands = listOf("0170"),
+        unit = "kPa"
+    ),
+    CHARGE_AIR_COOLER_TEMP(
+        key = "charge_air_temp",
+        category = DiagnosticCategory.TEMPERATURES_PRESSURES,
+        title = "Charge air cooler temperature (JL 2.0T / Diesel)",
+        pidBadge = "0177",
+        primaryCommands = listOf("0177"),
+        unit = "°C"
+    ),
 
     // 2. Throttle & Pedal System (ETC / TPS)
     THROTTLE_POSITION(
@@ -154,6 +178,15 @@ enum class DiagnosticTestId(
         pidBadge = "012F",
         primaryCommands = listOf("012F"),
         unit = "%"
+    ),
+    FUEL_RAIL_PRESSURE(
+        key = "fuel_rail_pressure",
+        category = DiagnosticCategory.FUEL_OXYGEN,
+        title = "Fuel rail pressure (JL GDI / EcoDiesel)",
+        pidBadge = "0123 / 0122",
+        primaryCommands = listOf("0123"),
+        fallbackCommand = "0122",
+        unit = "kPa"
     ),
     O2_S1_B1S1_VOLTAGE(
         key = "o2_s1_volts",
@@ -281,6 +314,22 @@ enum class DiagnosticTestId(
         primaryCommands = listOf("06A7"),
         unit = "cnt"
     ),
+    MISFIRE_CYL_7(
+        key = "misfire_cyl_7",
+        category = DiagnosticCategory.IGNITION_MISFIRES,
+        title = "Misfire Cyl 7 (JL 392 HEMI V8)",
+        pidBadge = "06A8",
+        primaryCommands = listOf("06A8"),
+        unit = "cnt"
+    ),
+    MISFIRE_CYL_8(
+        key = "misfire_cyl_8",
+        category = DiagnosticCategory.IGNITION_MISFIRES,
+        title = "Misfire Cyl 8 (JL 392 HEMI V8)",
+        pidBadge = "06A9",
+        primaryCommands = listOf("06A9"),
+        unit = "cnt"
+    ),
 
     // 5. Emissions & Exhaust Gas Recirculation (EGR & EVAP)
     COMMANDED_EGR(
@@ -381,6 +430,14 @@ enum class DiagnosticTestId(
         pidBadge = "0130",
         primaryCommands = listOf("0130"),
         unit = "cnt"
+    ),
+    HYBRID_BATTERY_LIFE(
+        key = "hybrid_battery_life",
+        category = DiagnosticCategory.ENGINE_ELECTRICAL_TRIP,
+        title = "HV Hybrid battery pack remaining (JL 4xe)",
+        pidBadge = "015B",
+        primaryCommands = listOf("015B"),
+        unit = "%"
     );
 
     companion object {

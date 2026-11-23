@@ -28,6 +28,8 @@ import com.example.obd.TerminalEntry
 import com.example.obd.TrailSensorState
 import com.example.obd.UnitSystem
 import com.example.obd.VinInfo
+import com.example.obd.WranglerDtcCatalog
+import com.example.obd.WranglerModel
 import com.example.obd.parseTireSizeInches
 import com.example.sensors.GpsSpeedManager
 import com.example.sensors.GpsTelemetryState
@@ -97,6 +99,17 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
         }
+        viewModelScope.launch {
+            bluetoothManager.sgwBlockedEvent.collect { blocked ->
+                if (blocked) {
+                    _uiFeedbackMessage.value = msg(
+                        en = "JL Security Gateway (SGW) blocked Mode 04 clear. Connect a 12+8 SGW bypass cable to clear codes.",
+                        he = "שער האבטחה JL (SGW) חסם את הניקוי (Mode 04). נדרש כבל עוקף 12+8 לניקוי תקלות."
+                    )
+                    bluetoothManager.consumeSgwBlockedEvent()
+                }
+            }
+        }
     }
 
     private val minuteTicker = flow {
@@ -145,24 +158,29 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     private val _selectedSubsystem = MutableStateFlow(JkSubsystem.ALL)
     val selectedSubsystem: StateFlow<JkSubsystem> = _selectedSubsystem.asStateFlow()
 
+    private val _selectedDtcModelFilter = MutableStateFlow<WranglerModel?>(null)
+    val selectedDtcModelFilter: StateFlow<WranglerModel?> = _selectedDtcModelFilter.asStateFlow()
+
     val filteredCatalogCodes: StateFlow<List<DtcCodeInfo>> = combine(
         _dtcSearchQuery,
-        _selectedSubsystem
-    ) { query, subsystem ->
+        _selectedSubsystem,
+        _selectedDtcModelFilter
+    ) { query, subsystem, modelFilter ->
         val q = query.trim().uppercase()
-        JkDiagnosticLibrary.jkDtcCatalog.filter { info ->
+        WranglerDtcCatalog.allCodes.filter { info ->
+            val matchesModel = modelFilter == null || modelFilter in info.models
             val matchesSubsystem = subsystem == JkSubsystem.ALL || info.subsystem == subsystem
             val matchesQuery = q.isEmpty() ||
                 info.code.contains(q) ||
                 info.title.uppercase().contains(q) ||
                 info.description.uppercase().contains(q) ||
                 info.affectedEngines.uppercase().contains(q)
-            matchesSubsystem && matchesQuery
+            matchesModel && matchesSubsystem && matchesQuery
         }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = JkDiagnosticLibrary.jkDtcCatalog
+        initialValue = WranglerDtcCatalog.allCodes
     )
 
     private val _uiFeedbackMessage = MutableStateFlow<String?>(null)
@@ -307,9 +325,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
         bluetoothManager.clearDtcs()
+        val modelName = rigPreferences.value.wranglerModel.displayName
         _uiFeedbackMessage.value = msg(
-            en = "Mode 04 Clear DTC command sent to Wrangler JK ECU.",
-            he = "פקודת ניקוי Mode 04 נשלחה למחשב הרכב."
+            en = "Mode 04 Clear DTC command sent to $modelName ECU.",
+            he = "פקודת ניקוי Mode 04 נשלחה למחשב $modelName."
         )
     }
 
@@ -358,6 +377,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         _selectedSubsystem.value = subsystem
     }
 
+    fun selectDtcModelFilter(model: WranglerModel?) {
+        _selectedDtcModelFilter.value = model
+    }
+
     fun tareInclinometer() {
         val current = sensorState.value
         viewModelScope.launch {
@@ -378,9 +401,21 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     fun updateRigDetails(nickname: String, tireSize: String, axleRatio: String) {
         viewModelScope.launch {
             rigPrefsRepo.updateRigDetails(nickname, tireSize, axleRatio)
+            val modelName = rigPreferences.value.wranglerModel.displayName
             _uiFeedbackMessage.value = msg(
-                en = "Wrangler JK rig profile updated.",
-                he = "פרופיל הרכב עודכן."
+                en = "$modelName rig profile updated.",
+                he = "פרופיל $modelName עודכן."
+            )
+        }
+    }
+
+    fun setWranglerModel(model: WranglerModel) {
+        viewModelScope.launch {
+            rigPrefsRepo.setWranglerModel(model)
+            _selectedDtcModelFilter.value = model
+            _uiFeedbackMessage.value = msg(
+                en = "Switched vehicle profile to ${model.displayName} (${model.years}).",
+                he = "פרופיל הרכב הוחלף ל-${model.displayName} (${model.years})."
             )
         }
     }

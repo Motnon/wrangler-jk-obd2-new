@@ -22,7 +22,7 @@
     <string name="race_layout_reset">Reset</string>
     <string name="race_hint_locked">LOCKED • SWIPE ANYWHERE TO SCROLL</string>
     <string name="race_hint_unlocked">DRAG WINDOW TO MOVE • CORNER ↘ TO RESIZE</string>
-    <string name="cd_hero_banner">Jeep Wrangler JK parked on mountain ridge at dusk</string>
+    <string name="cd_hero_banner">Jeep Wrangler parked on mountain ridge at dusk</string>
     <string name="cd_connect_bluetooth">Connect Bluetooth OBD-II adapter</string>
     <string name="cd_clear_codes">Clear trouble codes</string>
     <string name="cd_send_command">Send OBD-II command</string>

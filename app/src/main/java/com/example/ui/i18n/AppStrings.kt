@@ -7,6 +7,7 @@ import com.example.obd.JkEngineProfile
 import com.example.obd.JkSubsystem
 import com.example.obd.NightModeSetting
 import com.example.obd.UnitSystem
+import com.example.obd.WranglerModel
 
 data class AppStrings(
     val language: AppLanguage,
@@ -91,6 +92,10 @@ data class AppStrings(
     val activeMode03Badge: String,
     val pendingMode07Badge: String,
     val faultEncyclopediaHeader: String,
+    val faultEncyclopediaFormat: String,
+    val allModelsChip: String,
+    val jlSgwBannerTitle: String,
+    val jlSgwBannerBody: String,
     val searchDtcPlaceholder: String,
     val trailShopGuidance: String,
     // Terminal
@@ -100,6 +105,7 @@ data class AppStrings(
     val pairShort: String,
     val rawTxRxStream: String,
     val supportedPidMonitor: String,
+    val supportedPidMonitorFormat: String,
     val terminalInputPlaceholder: String,
     // Garage & Settings Cards
     val languageCardHeader: String,
@@ -107,6 +113,8 @@ data class AppStrings(
     val languageActiveSummary: String,
     val heroSubtitleFormat: String,
     val powertrainHeader: String,
+    val powertrainHeaderFormat: String,
+    val wranglerModelLabel: String,
     val rigNameLabel: String,
     val tireSizeLabel: String,
     val axleRatioLabel: String,
@@ -158,16 +166,34 @@ data class AppStrings(
     val btNoAdaptersTitle: String,
     val btNoAdaptersBody: String
 ) {
+    fun modelChipLabel(model: WranglerModel): String = when (language) {
+        AppLanguage.ENGLISH -> "${model.displayName} (${model.years})"
+        AppLanguage.HEBREW -> when (model) {
+            WranglerModel.JK -> "רנגלר JK (2007–2018)"
+            WranglerModel.JL -> "רנגלר JL (2018–היום)"
+        }
+    }
+
     fun engineChipLabel(profile: JkEngineProfile): String = when (language) {
         AppLanguage.ENGLISH -> when (profile) {
             JkEngineProfile.PENTASTAR_3_6 -> "3.6L Pentastar"
             JkEngineProfile.EGH_3_8 -> "3.8L V6"
             JkEngineProfile.CRD_2_8 -> "2.8L CRD"
+            JkEngineProfile.JL_PENTASTAR_3_6_ETORQUE -> "3.6L Pentastar ESS/eTorque"
+            JkEngineProfile.JL_TURBO_2_0 -> "2.0L Turbo"
+            JkEngineProfile.JL_ECODIESEL_3_0 -> "3.0L EcoDiesel"
+            JkEngineProfile.JL_PHEV_4XE -> "2.0T 4xe PHEV"
+            JkEngineProfile.JL_HEMI_392 -> "6.4L 392 HEMI"
         }
         AppLanguage.HEBREW -> when (profile) {
             JkEngineProfile.PENTASTAR_3_6 -> "3.6L פנטסטאר"
             JkEngineProfile.EGH_3_8 -> "3.8L V6"
             JkEngineProfile.CRD_2_8 -> "2.8L דיזל CRD"
+            JkEngineProfile.JL_PENTASTAR_3_6_ETORQUE -> "3.6L פנטסטאר ESS"
+            JkEngineProfile.JL_TURBO_2_0 -> "2.0L טורבו"
+            JkEngineProfile.JL_ECODIESEL_3_0 -> "3.0L אקו-דיזל"
+            JkEngineProfile.JL_PHEV_4XE -> "2.0T 4xe היברידי"
+            JkEngineProfile.JL_HEMI_392 -> "6.4L 392 HEMI"
         }
     }
 
@@ -190,13 +216,24 @@ data class AppStrings(
         }
     }
 
-    fun subsystemLabel(subsystem: JkSubsystem): String = when (language) {
-        AppLanguage.ENGLISH -> subsystem.label
+    fun subsystemLabel(subsystem: JkSubsystem, model: WranglerModel? = null): String = when (language) {
+        AppLanguage.ENGLISH -> when (subsystem) {
+            JkSubsystem.TIPM_NETWORK -> when (model) {
+                WranglerModel.JK -> "TIPM / CAN"
+                WranglerModel.JL -> "BCM / SGW / CAN"
+                null -> subsystem.label
+            }
+            else -> subsystem.label
+        }
         AppLanguage.HEBREW -> when (subsystem) {
             JkSubsystem.ALL -> "הכל"
             JkSubsystem.POWERTRAIN -> "מנוע"
             JkSubsystem.TRANSMISSION -> "תיבת הילוכים"
-            JkSubsystem.TIPM_NETWORK -> "TIPM / CAN"
+            JkSubsystem.TIPM_NETWORK -> when (model) {
+                WranglerModel.JK -> "TIPM / CAN"
+                WranglerModel.JL -> "BCM / SGW / CAN"
+                null -> "TIPM / BCM / CAN"
+            }
             JkSubsystem.ABS_CHASSIS -> "ABS / 4WD"
             JkSubsystem.EVAP -> "EVAP"
         }
@@ -246,7 +283,7 @@ data class AppStrings(
             trailHeading = "TRAIL HEADING",
             selectTestsTabFormat = "Select Tests (%d)",
             liveScanTabFormat = "Live Scan (%d)",
-            filterPidsPlaceholder = "Filter 43 OBD PIDs…",
+            filterPidsPlaceholder = "Filter %d OBD PIDs…",
             selectAllShort = "All",
             clearShort = "Clear",
             unitPrefix = "Unit: %s",
@@ -265,7 +302,7 @@ data class AppStrings(
             resumeShort = "Resume",
             editShort = "Edit",
             clearDialogTitle = "Clear MIL & Stored DTCs?",
-            clearDialogBody = "Mode 04 resets the Check Engine Light, stored codes, and emissions readiness monitors on your Wrangler JK ECU. Only clear codes after inspecting the fault.",
+            clearDialogBody = "Mode 04 resets the Check Engine Light, stored codes, and emissions readiness monitors on your Wrangler ECU. Note: 2018+ JL models require a 12+8 SGW bypass cable to clear codes.",
             sendMode04Clear = "Send Mode 04 Clear",
             cancel = "Cancel",
             saveSnapshotTitle = "Save ECU Snapshot",
@@ -280,21 +317,28 @@ data class AppStrings(
             liveEcuFaultsHeader = "LIVE ECU FAULT CODES",
             activeMode03Badge = "ACTIVE (MODE 03)",
             pendingMode07Badge = "PENDING (MODE 07)",
-            faultEncyclopediaHeader = "WRANGLER JK FAULT ENCYCLOPEDIA",
-            searchDtcPlaceholder = "Search code or symptom (e.g. P0456, TIPM, misfire)",
+            faultEncyclopediaHeader = "WRANGLER JK / JL FAULT ENCYCLOPEDIA",
+            faultEncyclopediaFormat = "WRANGLER %s FAULT ENCYCLOPEDIA",
+            allModelsChip = "All Models",
+            jlSgwBannerTitle = "Wrangler JL Security Gateway (SGW)",
+            jlSgwBannerBody = "Live PIDs and fault scanning (Mode 01/03/07/09) work via the stock OBD-II port. Clearing codes (Mode 04) requires a 12+8 SGW bypass cable or AutoAuth.",
+            searchDtcPlaceholder = "Search code or symptom (e.g. P00B7, P0456, 4xe, misfire)",
             trailShopGuidance = "TRAIL & SHOP GUIDANCE",
             terminalHeader = "ELM327 AT / HEX TERMINAL",
             terminalActiveLink = "CAN-Bus ISO 15765-4 link active",
             terminalOffline = "Offline — Connect ELM327 to transmit commands",
             pairShort = "Pair",
             rawTxRxStream = "RAW TX / RX STREAM",
-            supportedPidMonitor = "WRANGLER JK SUPPORTED PID MONITOR",
+            supportedPidMonitor = "WRANGLER SUPPORTED PID MONITOR",
+            supportedPidMonitorFormat = "WRANGLER %s SUPPORTED PID MONITOR",
             terminalInputPlaceholder = "Enter AT or PID (e.g. 010C)",
             languageCardHeader = "APP LANGUAGE",
             languageCardSubtitle = "Choose Hebrew (עברית) or English to update all text and layout",
             languageActiveSummary = "Active: English (Left-to-Right)",
             heroSubtitleFormat = "%s • %s Tires • %s Gears",
-            powertrainHeader = "WRANGLER JK POWERTRAIN & BUILD",
+            powertrainHeader = "WRANGLER POWERTRAIN & BUILD",
+            powertrainHeaderFormat = "WRANGLER %s POWERTRAIN & BUILD",
+            wranglerModelLabel = "Wrangler Generation",
             rigNameLabel = "Rig Name",
             tireSizeLabel = "Tire Size",
             axleRatioLabel = "Axle Ratio",
@@ -343,7 +387,7 @@ data class AppStrings(
             btPairedButton = "Paired",
             btDisabledWarning = "Bluetooth appears disabled in system settings. Enable Bluetooth to connect.",
             btNoAdaptersTitle = "No OBD-II adapters found yet",
-            btNoAdaptersBody = "Plug your ELM327 dongle into the JK OBD-II port under the driver dash, turn ignition to RUN, and tap Scan."
+            btNoAdaptersBody = "Plug your ELM327 dongle into the JK/JL OBD-II port under the driver dash, turn ignition to RUN, and tap Scan."
         )
 
         val Hebrew = AppStrings(
@@ -389,7 +433,7 @@ data class AppStrings(
             trailHeading = "כיוון מצפן",
             selectTestsTabFormat = "בחירת בדיקות (%d)",
             liveScanTabFormat = "סריקה חיה (%d)",
-            filterPidsPlaceholder = "סינון 43 חיישני OBD…",
+            filterPidsPlaceholder = "סינון %d חיישני OBD…",
             selectAllShort = "הכל",
             clearShort = "נקה",
             unitPrefix = "יחידה: %s",
@@ -408,7 +452,7 @@ data class AppStrings(
             resumeShort = "המשך",
             editShort = "ערוך",
             clearDialogTitle = "לנקות נורת תקלה וקודי DTC?",
-            clearDialogBody = "פקודת Mode 04 מאפסת את נורת Check Engine, קודים שמורים ומוני פליטה במחשב הרנגלר. נקה רק לאחר בדיקת התקלה.",
+            clearDialogBody = "פקודת Mode 04 מאפסת את נורת Check Engine ומוני פליטה במחשב הרנגלר. בדגמי JL (2018+) נדרש כבל עוקף SGW 12+8 לניקוי תקלות.",
             sendMode04Clear = "שלח ניקוי Mode 04",
             cancel = "ביטול",
             saveSnapshotTitle = "שמירת צילום מצב ECU",
@@ -423,21 +467,28 @@ data class AppStrings(
             liveEcuFaultsHeader = "קודי תקלה פעילים מהמחשב",
             activeMode03Badge = "פעיל (MODE 03)",
             pendingMode07Badge = "ממתין (MODE 07)",
-            faultEncyclopediaHeader = "אנציקלופדיית תקלות רנגלר JK",
-            searchDtcPlaceholder = "חפש קוד או תסמין (למשל P0456, TIPM, misfire)",
+            faultEncyclopediaHeader = "אנציקלופדיית תקלות רנגלר JK / JL",
+            faultEncyclopediaFormat = "אנציקלופדיית תקלות רנגלר %s",
+            allModelsChip = "כל הדגמים",
+            jlSgwBannerTitle = "שער אבטחה רנגלר JL (SGW)",
+            jlSgwBannerBody = "קריאת חיישנים וסריקת תקלות (Mode 01/03/07/09) פועלת ישירות מהשקע. מחיקת תקלות (Mode 04) ב-JL דורשת כבל עוקף 12+8 SGW.",
+            searchDtcPlaceholder = "חפש קוד או תסמין (למשל P00B7, P0456, 4xe, misfire)",
             trailShopGuidance = "הנחיות שטח ומוסך",
             terminalHeader = "מסוף פקודות ELM327 AT / HEX",
             terminalActiveLink = "חיבור CAN-Bus ISO 15765-4 פעיל",
             terminalOffline = "מנותק — חבר ELM327 לשליחת פקודות",
             pairShort = "צמד",
             rawTxRxStream = "זרם נתונים TX / RX",
-            supportedPidMonitor = "מוניטור PID נתמכים לרנגלר JK",
+            supportedPidMonitor = "מוניטור PID נתמכים לרנגלר",
+            supportedPidMonitorFormat = "מוניטור PID נתמכים לרנגלר %s",
             terminalInputPlaceholder = "הזן פקודת AT או PID (למשל 010C)",
             languageCardHeader = "שפת האפליקציה (LANGUAGE)",
             languageCardSubtitle = "בחר עברית או אנגלית לעדכון מיידי של כל הממשק והכיוון",
             languageActiveSummary = "פעיל: עברית (מימין לשמאל)",
             heroSubtitleFormat = "%s • צמיגים %s • יחס %s",
-            powertrainHeader = "מערכת הנעה ופרופיל רנגלר JK",
+            powertrainHeader = "מערכת הנעה ופרופיל רנגלר",
+            powertrainHeaderFormat = "מערכת הנעה ופרופיל רנגלר %s",
+            wranglerModelLabel = "דגם רנגלר (JK / JL)",
             rigNameLabel = "שם הרכב",
             tireSizeLabel = "מידת צמיגים",
             axleRatioLabel = "יחס העברה בסרן",

@@ -54,6 +54,7 @@ import com.example.obd.RigPreferences
 import com.example.obd.TerminalDirection
 import com.example.obd.TerminalEntry
 import com.example.obd.UnitSystem
+import com.example.obd.WranglerModel
 import com.example.obd.applyCalibratedSpeedKph
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.FaultCrimson
@@ -75,8 +76,15 @@ fun TerminalScreen(
 ) {
     val strings = LocalAppStrings.current
     var commandInput by remember { mutableStateOf("") }
-    val presetCommands = remember {
-        listOf("ATZ", "ATI", "ATRV", "0100", "0105", "010C", "012F", "0142", "03", "0902")
+    val presetCommands = remember(rigPrefs.wranglerModel) {
+        if (rigPrefs.wranglerModel == WranglerModel.JL) {
+            listOf("ATZ", "ATI", "ATRV", "0100", "0105", "015C", "010C", "0123", "0170", "015B", "012F", "0142", "03", "0902")
+        } else {
+            listOf("ATZ", "ATI", "ATRV", "0100", "0105", "010C", "012F", "0142", "03", "0902")
+        }
+    }
+    val visiblePids = remember(rigPrefs.wranglerModel) {
+        JkDiagnosticLibrary.supportedPidsFor(rigPrefs.wranglerModel)
     }
 
     Column(
@@ -210,13 +218,13 @@ fun TerminalScreen(
                 item {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = strings.supportedPidMonitor,
+                        text = String.format(Locale.US, strings.supportedPidMonitorFormat, rigPrefs.wranglerModel.code),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
-                items(JkDiagnosticLibrary.supportedPids, key = { it.pidHex }) { pid ->
+                items(visiblePids, key = { it.pidHex }) { pid ->
                     val isImperial = rigPrefs.unitSystem == UnitSystem.IMPERIAL
                     val formattedVal = formatLivePidValue(
                         pidHex = pid.pidHex,
@@ -225,7 +233,7 @@ fun TerminalScreen(
                         speedFactor = rigPrefs.speedCalibrationFactor
                     )
                     val unitLabel = when (pid.pidHex) {
-                        "0105", "010F", "0146" -> "°C"
+                        "0105", "010F", "0146", "015C" -> "°C"
                         "010D" -> strings.speedUnitKph
                         else -> if (isImperial) pid.unitImperial else pid.unitMetric
                     }
@@ -348,12 +356,18 @@ private fun formatLivePidValue(
     return when (pidHex) {
         "010C" -> t.rpm?.toString() ?: "--"
         "0105" -> t.coolantCelsius?.toString() ?: "--"
+        "015C" -> t.engineOilTempCelsius?.toString() ?: "--"
         "ATRV" -> t.batteryVolts?.let { String.format(Locale.US, "%.1f", it) } ?: "--"
         "010D" -> applyCalibratedSpeedKph(t.speedKmh, speedFactor)?.toString() ?: "--"
         "010F" -> t.intakeAirCelsius?.toString() ?: "--"
         "0111" -> t.throttlePercent?.let { "${it.roundToInt()}" } ?: "--"
         "0104" -> t.engineLoadPercent?.let { "${it.roundToInt()}" } ?: "--"
         "010B" -> t.manifoldKpa?.let { if (imperial) String.format(Locale.US, "%.1f", it * 0.145038f) else "$it" } ?: "--"
+        "0133" -> t.barometricKpa?.let { if (imperial) String.format(Locale.US, "%.1f", it * 0.145038f) else "$it" } ?: "--"
+        "0123" -> t.fuelRailPressureKpa?.let { String.format(Locale.US, "%,d", it) } ?: "--"
+        "0170" -> t.boostPressureKpa?.toString() ?: "--"
+        "015B" -> t.hybridBatteryRemainingPct?.let { String.format(Locale.US, "%.1f", it) } ?: "--"
+        "0151" -> t.fuelTypeName ?: "--"
         "0106" -> t.shortTermFuelTrimB1?.let { String.format(Locale.US, "%+.1f", it) } ?: "--"
         "0107" -> t.longTermFuelTrimB1?.let { String.format(Locale.US, "%+.1f", it) } ?: "--"
         "012F" -> t.fuelLevelPercent?.let { "${it.roundToInt()}" } ?: "--"

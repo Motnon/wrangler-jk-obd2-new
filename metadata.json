@@ -1,6 +1,6 @@
 {
   "name": "Wrangler OBD",
-  "description": "Jeep Wrangler JK (2007-2018) OBD-II diagnostics, live ECU gauges, DTC fault decoder, and trail inclinometer via Bluetooth ELM327.",
+  "description": "Jeep Wrangler JK (2007-2018) & JL (2018+) OBD-II diagnostics, live ECU gauges, DTC fault decoder, and trail inclinometer via Bluetooth ELM327.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

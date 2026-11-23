@@ -1,9 +1,45 @@
 package com.example.obd
 
-enum class JkEngineProfile(val label: String, val years: String, val displacement: String) {
-    PENTASTAR_3_6("3.6L Pentastar V6", "2012–2018 JK", "3604 cc DOHC"),
-    EGH_3_8("3.8L EGH V6", "2007–2011 JK", "3778 cc OHV"),
-    CRD_2_8("2.8L VM CRD Diesel", "2007–2018 Export", "2777 cc I4 Turbo")
+enum class WranglerModel(
+    val code: String,
+    val displayName: String,
+    val years: String,
+    val defaultNickname: String,
+    val defaultStockTireInches: Float
+) {
+    JK("JK", "Wrangler JK", "2007–2018", "Wrangler JK", 32.0f),
+    JL("JL", "Wrangler JL", "2018–Present", "Wrangler JL", 33.0f)
+}
+
+enum class JkEngineProfile(
+    val label: String,
+    val years: String,
+    val displacement: String,
+    val model: WranglerModel,
+    val redlineRpm: Float,
+    val maxRpmScale: Float
+) {
+    // Wrangler JK (2007–2018)
+    PENTASTAR_3_6("3.6L Pentastar V6", "2012–2018 JK", "3604 cc DOHC", WranglerModel.JK, 6400f, 7000f),
+    EGH_3_8("3.8L EGH V6", "2007–2011 JK", "3778 cc OHV", WranglerModel.JK, 5500f, 6000f),
+    CRD_2_8("2.8L VM CRD Diesel", "2007–2018 Export", "2777 cc I4 Turbo", WranglerModel.JK, 4200f, 5000f),
+
+    // Wrangler JL (2018–Present)
+    JL_PENTASTAR_3_6_ETORQUE("3.6L Pentastar ESS/eTorque", "2018+ JL", "3604 cc V6", WranglerModel.JL, 6400f, 7000f),
+    JL_TURBO_2_0("2.0L Hurricane Turbo I4", "2018+ JL", "1995 cc GDI Turbo", WranglerModel.JL, 6000f, 7000f),
+    JL_ECODIESEL_3_0("3.0L EcoDiesel V6", "2020–2023 JL", "2987 cc V6 Diesel", WranglerModel.JL, 4400f, 5000f),
+    JL_PHEV_4XE("2.0L Turbo 4xe PHEV", "2021+ JL", "1995 cc Turbo + HV", WranglerModel.JL, 6000f, 7000f),
+    JL_HEMI_392("6.4L 392 HEMI V8", "2021+ JL", "6417 cc V8", WranglerModel.JL, 6400f, 7000f);
+
+    companion object {
+        fun forModel(model: WranglerModel): List<JkEngineProfile> =
+            entries.filter { it.model == model }
+
+        fun defaultForModel(model: WranglerModel): JkEngineProfile = when (model) {
+            WranglerModel.JK -> PENTASTAR_3_6
+            WranglerModel.JL -> JL_PENTASTAR_3_6_ETORQUE
+        }
+    }
 }
 
 enum class UnitSystem(val label: String) {
@@ -56,9 +92,15 @@ data class LiveTelemetry(
     val coolantCelsius: Int? = null,
     val intakeAirCelsius: Int? = null,
     val ambientAirCelsius: Int? = null,
+    val engineOilTempCelsius: Int? = null,
     val throttlePercent: Float? = null,
     val engineLoadPercent: Float? = null,
     val manifoldKpa: Int? = null,
+    val barometricKpa: Int? = null,
+    val fuelRailPressureKpa: Int? = null,
+    val boostPressureKpa: Int? = null,
+    val hybridBatteryRemainingPct: Float? = null,
+    val fuelTypeName: String? = null,
     val shortTermFuelTrimB1: Float? = null,
     val longTermFuelTrimB1: Float? = null,
     val fuelLevelPercent: Float? = null,
@@ -72,7 +114,9 @@ data class VinInfo(
     val vin: String,
     val modelYear: String,
     val isWranglerJk: Boolean,
-    val plantSummary: String
+    val plantSummary: String,
+    val detectedModel: WranglerModel? = if (isWranglerJk) WranglerModel.JK else null,
+    val engineHint: String? = null
 )
 
 enum class DtcSeverity(val label: String) {
@@ -85,7 +129,7 @@ enum class JkSubsystem(val label: String) {
     ALL("All"),
     POWERTRAIN("Engine"),
     TRANSMISSION("Trans"),
-    TIPM_NETWORK("TIPM / CAN"),
+    TIPM_NETWORK("TIPM / BCM / CAN"),
     ABS_CHASSIS("ABS / 4WD"),
     EVAP("EVAP")
 }
@@ -97,7 +141,8 @@ data class DtcCodeInfo(
     val severity: DtcSeverity,
     val affectedEngines: String,
     val description: String,
-    val trailGuidance: String
+    val trailGuidance: String,
+    val models: Set<WranglerModel> = setOf(WranglerModel.JK, WranglerModel.JL)
 )
 
 data class ObdPidDefinition(
@@ -105,7 +150,8 @@ data class ObdPidDefinition(
     val name: String,
     val jkNote: String,
     val unitImperial: String,
-    val unitMetric: String
+    val unitMetric: String,
+    val models: Set<WranglerModel> = setOf(WranglerModel.JK, WranglerModel.JL)
 )
 
 data class TerminalEntry(
@@ -131,6 +177,7 @@ data class TrailSensorState(
 )
 
 data class RigPreferences(
+    val wranglerModel: WranglerModel = WranglerModel.JK,
     val rigNickname: String = "Wrangler JK",
     val engineProfile: JkEngineProfile = JkEngineProfile.PENTASTAR_3_6,
     val unitSystem: UnitSystem = UnitSystem.METRIC,
