@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.obd.AppLanguage
 import com.example.obd.AppVisualTheme
 import com.example.obd.JkEngineProfile
 import com.example.obd.NightModeSetting
@@ -16,6 +17,7 @@ import com.example.obd.RigPreferences
 import com.example.obd.UnitSystem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.util.Locale
 
 private val Context.rigDataStore: DataStore<Preferences> by preferencesDataStore(name = "wrangler_jk_rig_prefs")
 
@@ -39,6 +41,8 @@ class RigPreferencesRepository(private val context: Context) {
         val NIGHT_MODE_SETTING = stringPreferencesKey("night_mode_setting")
         val NIGHT_BRIGHTNESS_PCT = intPreferencesKey("night_brightness_pct")
         val SPEED_CALIBRATION_FACTOR = floatPreferencesKey("speed_calibration_factor")
+        val SELECTED_DIAG_TESTS = stringPreferencesKey("selected_diag_tests")
+        val APP_LANGUAGE = stringPreferencesKey("app_language")
     }
 
     val preferencesFlow: Flow<RigPreferences> = context.rigDataStore.data.map { prefs ->
@@ -46,7 +50,18 @@ class RigPreferencesRepository(private val context: Context) {
         val unitName = prefs[Keys.UNIT_SYSTEM] ?: UnitSystem.METRIC.name
         val themeName = prefs[Keys.VISUAL_THEME] ?: AppVisualTheme.NEON_CYAN_AMBER.name
         val lastDarkName = prefs[Keys.LAST_DARK_THEME] ?: AppVisualTheme.NEON_CYAN_AMBER.name
-        val nightName = prefs[Keys.NIGHT_MODE_SETTING] ?: NightModeSetting.AUTO_SUN.name
+        val nightName = prefs[Keys.NIGHT_MODE_SETTING] ?: NightModeSetting.MANUAL_OFF.name
+        val langName = prefs[Keys.APP_LANGUAGE]
+        val defaultLang = if (Locale.getDefault().language in listOf("iw", "he")) {
+            AppLanguage.HEBREW
+        } else {
+            AppLanguage.ENGLISH
+        }
+        val resolvedLanguage = if (langName != null) {
+            AppLanguage.entries.firstOrNull { it.name == langName } ?: defaultLang
+        } else {
+            defaultLang
+        }
         RigPreferences(
             rigNickname = prefs[Keys.RIG_NICKNAME] ?: "Wrangler JK",
             engineProfile = JkEngineProfile.entries.firstOrNull { it.name == engineName }
@@ -68,9 +83,11 @@ class RigPreferencesRepository(private val context: Context) {
                 ?.takeIf { it != AppVisualTheme.CLASSIC_WHITE }
                 ?: AppVisualTheme.NEON_CYAN_AMBER,
             nightModeSetting = NightModeSetting.entries.firstOrNull { it.name == nightName }
-                ?: NightModeSetting.AUTO_SUN,
+                ?: NightModeSetting.MANUAL_OFF,
             nightBrightnessPercent = prefs[Keys.NIGHT_BRIGHTNESS_PCT] ?: 20,
-            speedCalibrationFactor = prefs[Keys.SPEED_CALIBRATION_FACTOR] ?: 1.0f
+            speedCalibrationFactor = prefs[Keys.SPEED_CALIBRATION_FACTOR] ?: 1.0f,
+            selectedDiagnosticTestsCsv = prefs[Keys.SELECTED_DIAG_TESTS] ?: "",
+            appLanguage = resolvedLanguage
         )
     }
 
@@ -147,6 +164,18 @@ class RigPreferencesRepository(private val context: Context) {
             if (stockTireInches != null) {
                 prefs[Keys.STOCK_TIRE_INCHES] = stockTireInches.coerceIn(27f, 36f)
             }
+        }
+    }
+
+    suspend fun setSelectedDiagnosticTests(csv: String) {
+        context.rigDataStore.edit { prefs ->
+            prefs[Keys.SELECTED_DIAG_TESTS] = csv
+        }
+    }
+
+    suspend fun setAppLanguage(language: AppLanguage) {
+        context.rigDataStore.edit { prefs ->
+            prefs[Keys.APP_LANGUAGE] = language.name
         }
     }
 }

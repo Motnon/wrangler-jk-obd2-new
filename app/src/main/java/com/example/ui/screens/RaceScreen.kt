@@ -31,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -40,11 +41,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.obd.BluetoothDeviceItem
 import com.example.obd.ConnectionStatus
 import com.example.obd.JkEngineProfile
@@ -66,6 +71,7 @@ import com.example.ui.components.RaceShiftLightBar
 import com.example.ui.components.RaceSpeedometerDial
 import com.example.ui.components.RaceThrottleBarCard
 import com.example.ui.components.TrailInclinometerCard
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ChakraPetchFontFamily
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalRacePalette
@@ -92,6 +98,7 @@ fun RaceScreen(
     modifier: Modifier = Modifier
 ) {
     val palette = LocalRacePalette.current
+    val strings = LocalAppStrings.current
     val isImperialMap = rigPrefs.unitSystem == UnitSystem.IMPERIAL
 
     val calibratedSpeedKph = applyCalibratedSpeedKph(telemetry.speedKmh, rigPrefs.speedCalibrationFactor)
@@ -130,13 +137,12 @@ fun RaceScreen(
         JkEngineProfile.EGH_3_8 -> 5500f
         JkEngineProfile.CRD_2_8 -> 4200f
     }
-    val isRedline = telemetry.rpm != null && telemetry.rpm.toFloat() >= rpmRedline
 
     val speedDisplayValue: Float? = calibratedSpeedKph?.toFloat()
     val speedMax = 200f
     val speedWarn = 155f
     val speedTickCount = 6
-    val speedUnit = "KPH"
+    val speedUnit = strings.speedUnitKph
     val speedDisplayText = calibratedSpeedKph?.toString() ?: "--"
     val rpmText = telemetry.rpm?.let { String.format(Locale.US, "%,d", it) } ?: "--"
 
@@ -240,7 +246,7 @@ fun RaceScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Day",
+                                    text = stringResource(R.string.race_mode_day),
                                     fontFamily = ChakraPetchFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
@@ -264,12 +270,12 @@ fun RaceScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.DarkMode,
-                                    contentDescription = "Dark mode",
+                                    contentDescription = stringResource(R.string.race_mode_dark),
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Dark",
+                                    text = stringResource(R.string.race_mode_dark),
                                     fontFamily = ChakraPetchFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
@@ -299,12 +305,20 @@ fun RaceScreen(
                             ) {
                                 Icon(
                                     imageVector = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.OpenWith,
-                                    contentDescription = if (isLocked) "Unlock gauge layout" else "Lock gauge layout",
+                                    contentDescription = if (isLocked) {
+                                        stringResource(R.string.race_layout_unlock)
+                                    } else {
+                                        stringResource(R.string.race_layout_lock)
+                                    },
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (isLocked) "Unlock" else "Lock",
+                                    text = if (isLocked) {
+                                        stringResource(R.string.race_layout_unlock)
+                                    } else {
+                                        stringResource(R.string.race_layout_lock)
+                                    },
                                     fontFamily = ChakraPetchFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
@@ -330,12 +344,12 @@ fun RaceScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.RestartAlt,
-                                    contentDescription = "Reset race layout",
+                                    contentDescription = stringResource(R.string.race_layout_reset),
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Reset",
+                                    text = stringResource(R.string.race_layout_reset),
                                     fontFamily = ChakraPetchFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
@@ -346,9 +360,9 @@ fun RaceScreen(
 
                     Text(
                         text = if (isLocked) {
-                            "LOCKED • SWIPE ANYWHERE TO SCROLL"
+                            stringResource(R.string.race_hint_locked)
                         } else {
-                            "DRAG WINDOW TO MOVE • CORNER ↘ TO RESIZE"
+                            stringResource(R.string.race_hint_unlocked)
                         },
                         fontFamily = JetBrainsMonoFontFamily,
                         fontWeight = FontWeight.Medium,
@@ -357,6 +371,44 @@ fun RaceScreen(
                         overflow = TextOverflow.Ellipsis,
                         color = if (isLocked) palette.textSecondary else palette.zone1
                     )
+
+                    if (vinInfo != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = palette.podSurface,
+                            border = BorderStroke(1.dp, palette.zone2.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("race_vin_badge")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${strings.vinPrefix}:",
+                                    fontFamily = ChakraPetchFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = palette.zone2
+                                )
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    Text(
+                                        text = "${vinInfo.vin} • ${vinInfo.modelYear} JK",
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = palette.textPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -420,62 +472,63 @@ fun RaceScreen(
                     .verticalScroll(boardScrollState)
                     .testTag("race_adjustable_board")
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(totalBoardHeightDp)
-                ) {
-                    val orderedEntries = windowMap.entries.sortedBy { it.value.zOrder }
-                    for ((id, geom) in orderedEntries) {
-                        AdjustableRaceWindow(
-                            windowId = id,
-                            geometry = geom,
-                            boardWidthPx = boardWidthPx,
-                            isLocked = isLocked,
-                            onBringToFront = bringToFront,
-                            onMoveDelta = onMoveDelta,
-                            onResizeDelta = onResizeDelta,
-                            onCommitGesture = commitGesture
-                        ) {
-                            when (id) {
-                                RaceWindowId.SHIFT_LIGHTS -> {
-                                    RaceShiftLightBar(
-                                        rpm = telemetry.rpm,
-                                        rpmRedline = rpmRedline,
-                                        modifier = Modifier.testTag("race_shift_light_bar")
-                                    )
-                                }
+                // Keep the adjustable coordinate board physically LTR so touch drag, bottom-right resize,
+                // Fuel-left/Coolant-right placement, and clockwise dials stay consistent under Hebrew RTL.
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(totalBoardHeightDp)
+                    ) {
+                        val orderedEntries = windowMap.entries.sortedBy { it.value.zOrder }
+                        for ((id, geom) in orderedEntries) {
+                            AdjustableRaceWindow(
+                                windowId = id,
+                                geometry = geom,
+                                boardWidthPx = boardWidthPx,
+                                isLocked = isLocked,
+                                onBringToFront = bringToFront,
+                                onMoveDelta = onMoveDelta,
+                                onResizeDelta = onResizeDelta,
+                                onCommitGesture = commitGesture
+                            ) {
+                                when (id) {
+                                    RaceWindowId.SHIFT_LIGHTS -> {
+                                        RaceShiftLightBar(
+                                            rpm = telemetry.rpm,
+                                            rpmRedline = rpmRedline,
+                                            modifier = Modifier.testTag("race_shift_light_bar")
+                                        )
+                                    }
 
-                                RaceWindowId.FUEL_BAR -> {
-                                    RaceSegmentedBarGauge(
-                                        title = "FUEL",
-                                        topMarker = "F",
-                                        bottomMarker = "E",
-                                        valueText = telemetry.fuelLevelPercent?.let { "${it.roundToInt()}%" } ?: "--%",
-                                        fraction = fuelFraction,
-                                        isWarning = isLowFuel,
-                                        isCoolantMode = false,
-                                        modifier = Modifier.testTag("race_gauge_fuel")
-                                    )
-                                }
+                                    RaceWindowId.FUEL_BAR -> {
+                                        RaceSegmentedBarGauge(
+                                            title = strings.fuelTitle,
+                                            topMarker = "F",
+                                            bottomMarker = "E",
+                                            valueText = telemetry.fuelLevelPercent?.let { "${it.roundToInt()}%" } ?: "--%",
+                                            fraction = fuelFraction,
+                                            isWarning = isLowFuel,
+                                            isCoolantMode = false,
+                                            modifier = Modifier.testTag("race_gauge_fuel")
+                                        )
+                                    }
 
-                                RaceWindowId.SPEED_DIAL -> {
-                                    RaceSpeedometerDial(
-                                        speedValue = speedDisplayValue,
-                                        speedDisplayText = speedDisplayText,
-                                        speedUnit = speedUnit,
-                                        maxSpeedScale = speedMax,
-                                        speedWarningThreshold = speedWarn,
-                                        majorTickCount = speedTickCount,
-                                        rpmText = rpmText,
-                                        isRedline = isRedline,
-                                        modifier = Modifier.testTag("race_gauge_speedometer")
-                                    )
-                                }
+                                    RaceWindowId.SPEED_DIAL -> {
+                                        RaceSpeedometerDial(
+                                            speedValue = speedDisplayValue,
+                                            speedDisplayText = speedDisplayText,
+                                            speedUnit = speedUnit,
+                                            maxSpeedScale = speedMax,
+                                            speedWarningThreshold = speedWarn,
+                                            majorTickCount = speedTickCount,
+                                            modifier = Modifier.testTag("race_gauge_speedometer")
+                                        )
+                                    }
 
                                 RaceWindowId.COOLANT_BAR -> {
                                     RaceSegmentedBarGauge(
-                                        title = "TEMP",
+                                        title = strings.coolantTitle,
                                         topMarker = "H",
                                         bottomMarker = "C",
                                         valueText = coolantDisplayValue?.let { "${it.roundToInt()}$tempUnit" } ?: "--$tempUnit",
@@ -495,9 +548,9 @@ fun RaceScreen(
 
                                 RaceWindowId.RPM_POD -> {
                                     RaceCircularArcPod(
-                                        title = "ENGINE RPM",
+                                        title = strings.engineRpmTitle,
                                         valueText = rpmText,
-                                        unit = "RPM",
+                                        unit = strings.rpmUnit,
                                         value = telemetry.rpm?.toFloat(),
                                         minValue = 0f,
                                         maxValue = maxRpmScale,
@@ -508,7 +561,7 @@ fun RaceScreen(
 
                                 RaceWindowId.MAP_POD -> {
                                     RaceCircularArcPod(
-                                        title = "MANIFOLD MAP",
+                                        title = strings.manifoldMapTitle,
                                         valueText = mapValueText,
                                         unit = mapUnit,
                                         value = mapDisplayValue,
@@ -521,7 +574,7 @@ fun RaceScreen(
 
                                 RaceWindowId.LOAD_POD -> {
                                     RaceCircularArcPod(
-                                        title = "ENGINE LOAD",
+                                        title = strings.engineLoadTitle,
                                         valueText = telemetry.engineLoadPercent?.let { "${it.roundToInt()}" } ?: "--",
                                         unit = "%",
                                         value = telemetry.engineLoadPercent,
@@ -541,6 +594,7 @@ fun RaceScreen(
                                         isLowBattery = isLowBatt,
                                         intakeTempText = intakeText,
                                         fuelTrimText = stftText,
+                                        vinText = vinInfo?.vin,
                                         onResetPeaks = {
                                             peakRpm = telemetry.rpm
                                             peakSpeedKph = calibratedSpeedKph
@@ -565,4 +619,5 @@ fun RaceScreen(
             }
         }
     }
+}
 }

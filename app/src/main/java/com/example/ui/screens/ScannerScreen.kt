@@ -56,11 +56,13 @@ import com.example.obd.DtcSeverity
 import com.example.obd.JkDiagnosticLibrary
 import com.example.obd.JkSubsystem
 import com.example.obd.LiveTelemetry
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.CautionYellow
 import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.SteelBlue
 import com.example.ui.theme.TrailSage
+import java.util.Locale
 
 @Composable
 fun ScannerScreen(
@@ -79,6 +81,7 @@ fun ScannerScreen(
     onOpenBluetoothSheet: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var showSaveSnapshotDialog by remember { mutableStateOf(false) }
     var snapshotNote by remember { mutableStateOf("") }
@@ -89,12 +92,8 @@ fun ScannerScreen(
     if (showClearConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showClearConfirmDialog = false },
-            title = { Text("Clear MIL & Stored DTCs?") },
-            text = {
-                Text(
-                    "Mode 04 resets the Check Engine Light, stored codes, and emissions readiness monitors on your Wrangler JK ECU. Only clear codes after inspecting the fault."
-                )
-            },
+            title = { Text(strings.clearDialogTitle) },
+            text = { Text(strings.clearDialogBody) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -103,12 +102,12 @@ fun ScannerScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = FaultCrimson)
                 ) {
-                    Text("Send Mode 04 Clear")
+                    Text(strings.sendMode04Clear)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirmDialog = false }) {
-                    Text("Cancel")
+                    Text(strings.cancel)
                 }
             }
         )
@@ -117,18 +116,18 @@ fun ScannerScreen(
     if (showSaveSnapshotDialog) {
         AlertDialog(
             onDismissRequest = { showSaveSnapshotDialog = false },
-            title = { Text("Save ECU Snapshot") },
+            title = { Text(strings.saveSnapshotTitle) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Stores current MIL state, detected DTCs, coolant temp, and battery voltage to your local Garage log.",
+                        text = strings.saveSnapshotBody,
                         style = MaterialTheme.typography.bodySmall
                     )
                     OutlinedTextField(
                         value = snapshotNote,
                         onValueChange = { snapshotNote = it },
-                        label = { Text("Trail / Service Note (optional)") },
-                        placeholder = { Text("e.g. Cold start after Rubicon trail") },
+                        label = { Text(strings.snapshotNoteLabel) },
+                        placeholder = { Text(strings.snapshotNotePlaceholder) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -142,12 +141,12 @@ fun ScannerScreen(
                         showSaveSnapshotDialog = false
                     }
                 ) {
-                    Text("Save")
+                    Text(strings.save)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showSaveSnapshotDialog = false }) {
-                    Text("Cancel")
+                    Text(strings.cancel)
                 }
             }
         )
@@ -189,17 +188,23 @@ fun ScannerScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "ECU DIAGNOSTIC SCANNER",
+                                    text = strings.ecuScannerHeader,
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = when {
-                                        !isConnected -> "Connect ELM327 adapter to read live Mode 03/07 codes"
+                                        !isConnected -> strings.scannerConnectPrompt
                                         activeDtcs.isEmpty() && pendingDtcs.isEmpty() && !telemetry.milOn ->
-                                            "No active or pending fault codes reported"
+                                            strings.scannerCleanPrompt
                                         else ->
-                                            "${activeDtcs.size} Active • ${pendingDtcs.size} Pending • MIL ${if (telemetry.milOn) "ON" else "OFF"}"
+                                            String.format(
+                                                Locale.US,
+                                                strings.scannerCountFormat,
+                                                activeDtcs.size,
+                                                pendingDtcs.size,
+                                                if (telemetry.milOn) "ON" else "OFF"
+                                            )
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -274,7 +279,7 @@ fun ScannerScreen(
                 // Live ECU Detected Codes
                 if (activeDtcs.isNotEmpty() || pendingDtcs.isNotEmpty()) {
                     Text(
-                        text = "LIVE ECU FAULT CODES",
+                        text = strings.liveEcuFaultsHeader,
                         style = MaterialTheme.typography.labelLarge,
                         color = FaultCrimson
                     )
@@ -283,7 +288,7 @@ fun ScannerScreen(
                         val info = remember(code) { JkDiagnosticLibrary.lookupCode(code) }
                         DtcCodeCard(
                             info = info,
-                            badgeLabel = "ACTIVE (MODE 03)",
+                            badgeLabel = strings.activeMode03Badge,
                             isExpanded = expandedCode == "live_$code",
                             onToggle = {
                                 expandedCode = if (expandedCode == "live_$code") null else "live_$code"
@@ -294,7 +299,7 @@ fun ScannerScreen(
                         val info = remember(code) { JkDiagnosticLibrary.lookupCode(code) }
                         DtcCodeCard(
                             info = info,
-                            badgeLabel = "PENDING (MODE 07)",
+                            badgeLabel = strings.pendingMode07Badge,
                             isExpanded = expandedCode == "pend_$code",
                             onToggle = {
                                 expandedCode = if (expandedCode == "pend_$code") null else "pend_$code"
@@ -305,7 +310,7 @@ fun ScannerScreen(
 
                 // Wrangler JK Offline DTC Encyclopedia
                 Text(
-                    text = "WRANGLER JK FAULT ENCYCLOPEDIA",
+                    text = strings.faultEncyclopediaHeader,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -313,9 +318,9 @@ fun ScannerScreen(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
-                    placeholder = { Text("Search code or symptom (e.g. P0456, TIPM, misfire)") },
+                    placeholder = { Text(strings.searchDtcPlaceholder) },
                     leadingIcon = {
-                        Icon(imageVector = Icons.Rounded.Search, contentDescription = "Search codes")
+                        Icon(imageVector = Icons.Rounded.Search, contentDescription = strings.searchDtcPlaceholder)
                     },
                     singleLine = true,
                     modifier = Modifier
@@ -333,7 +338,7 @@ fun ScannerScreen(
                         FilterChip(
                             selected = selectedSubsystem == subsystem,
                             onClick = { onSelectSubsystem(subsystem) },
-                            label = { Text(subsystem.label) },
+                            label = { Text(strings.subsystemLabel(subsystem)) },
                             modifier = Modifier.testTag("subsystem_chip_${subsystem.name.lowercase()}")
                         )
                     }
@@ -344,7 +349,7 @@ fun ScannerScreen(
         items(catalogCodes, key = { it.code }) { info ->
             DtcCodeCard(
                 info = info,
-                badgeLabel = info.subsystem.label.uppercase(),
+                badgeLabel = strings.subsystemLabel(info.subsystem).uppercase(),
                 isExpanded = expandedCode == info.code,
                 onToggle = {
                     expandedCode = if (expandedCode == info.code) null else info.code
@@ -441,7 +446,7 @@ private fun DtcCodeCard(
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
-                                text = "TRAIL & SHOP GUIDANCE",
+                                text = LocalAppStrings.current.trailShopGuidance,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )

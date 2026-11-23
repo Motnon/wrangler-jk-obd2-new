@@ -34,11 +34,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ChakraPetchFontFamily
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalRacePalette
@@ -201,7 +203,7 @@ fun RaceThrottleBarCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "THROTTLE (TPS)",
+                    text = LocalAppStrings.current.throttleTitle,
                     fontFamily = ChakraPetchFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
@@ -231,6 +233,7 @@ fun RaceThrottleBarCard(
                 val gap = 3.dp.toPx()
                 val segWidth = ((size.width - gap * (segments - 1)) / segments).coerceAtLeast(3f)
                 val litCount = (animatedFraction * segments).roundToInt()
+                val isLightDay = palette.boardBg.luminance() > 0.4f
 
                 for (i in 0 until segments) {
                     val segColor = when {
@@ -241,8 +244,13 @@ fun RaceThrottleBarCard(
                         else -> palette.zone5
                     }
                     val lit = throttlePercent != null && i < litCount
+                    val alpha = when {
+                        lit -> 0.98f
+                        isLightDay -> 0.30f
+                        else -> 0.16f
+                    }
                     drawRoundRect(
-                        color = segColor.copy(alpha = if (lit) 0.95f else 0.16f),
+                        color = segColor.copy(alpha = alpha),
                         topLeft = Offset(i * (segWidth + gap), 0f),
                         size = Size(segWidth, size.height.coerceAtLeast(6f)),
                         cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
@@ -265,10 +273,12 @@ fun RaceSessionPeaksCard(
     isLowBattery: Boolean,
     intakeTempText: String,
     fuelTrimText: String,
+    vinText: String? = null,
     onResetPeaks: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val palette = LocalRacePalette.current
+    val strings = LocalAppStrings.current
     Surface(
         modifier = modifier.fillMaxSize(),
         shape = RoundedCornerShape(16.dp),
@@ -287,7 +297,7 @@ fun RaceSessionPeaksCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "PIT-WALL & SESSION PEAKS",
+                    text = strings.pitWallPeaksTitle,
                     fontFamily = ChakraPetchFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
@@ -305,7 +315,7 @@ fun RaceSessionPeaksCard(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Refresh,
-                        contentDescription = "Reset session peak telemetry",
+                        contentDescription = strings.resetPeaksCd,
                         tint = palette.zone1
                     )
                 }
@@ -316,19 +326,19 @@ fun RaceSessionPeaksCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 RaceMetricTile(
-                    label = "PEAK RPM",
+                    label = strings.peakRpmLabel,
                     value = peakRpm?.toString() ?: "--",
                     accentColor = palette.zone4,
                     modifier = Modifier.weight(1f)
                 )
                 RaceMetricTile(
-                    label = "TOP $speedUnit",
+                    label = String.format(strings.topSpeedLabelFormat, speedUnit),
                     value = peakSpeedDisplay?.toString() ?: "--",
                     accentColor = palette.zone1,
                     modifier = Modifier.weight(1f)
                 )
                 RaceMetricTile(
-                    label = "BATTERY",
+                    label = strings.batteryLabel,
                     value = batteryVoltsText,
                     accentColor = if (isLowBattery) palette.zone5 else palette.zone2,
                     modifier = Modifier.weight(1f)
@@ -340,17 +350,27 @@ fun RaceSessionPeaksCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 RaceMetricTile(
-                    label = "INTAKE AIR",
+                    label = strings.intakeAirLabel,
                     value = intakeTempText,
                     accentColor = palette.accentBlue,
                     modifier = Modifier.weight(1f)
                 )
                 RaceMetricTile(
-                    label = "STFT B1",
+                    label = strings.fuelTrimLabel,
                     value = fuelTrimText,
                     accentColor = palette.zone3,
                     modifier = Modifier.weight(1f)
                 )
+                if (!vinText.isNullOrBlank()) {
+                    RaceMetricTile(
+                        label = strings.vinPrefix,
+                        value = vinText,
+                        accentColor = palette.zone2,
+                        modifier = Modifier
+                            .weight(1.45f)
+                            .testTag("race_peaks_vin")
+                    )
+                }
             }
         }
     }
@@ -364,11 +384,15 @@ private fun RaceMetricTile(
     modifier: Modifier = Modifier
 ) {
     val palette = LocalRacePalette.current
+    val isLightDay = palette.boardBg.luminance() > 0.4f
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(10.dp),
         color = palette.podSurface,
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.35f))
+        border = BorderStroke(
+            width = if (isLightDay) 1.2.dp else 1.dp,
+            color = accentColor.copy(alpha = if (isLightDay) 0.72f else 0.35f)
+        )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),

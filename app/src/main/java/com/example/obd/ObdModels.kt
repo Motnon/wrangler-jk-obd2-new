@@ -24,6 +24,11 @@ enum class NightModeSetting(val label: String) {
     MANUAL_OFF("Off")
 }
 
+enum class AppLanguage(val code: String, val nativeLabel: String) {
+    ENGLISH("en", "English"),
+    HEBREW("iw", "עברית")
+}
+
 enum class ConnectionStatus {
     DISCONNECTED,
     CONNECTING,
@@ -140,9 +145,11 @@ data class RigPreferences(
     val raceLayoutLocked: Boolean = false,
     val visualTheme: AppVisualTheme = AppVisualTheme.NEON_CYAN_AMBER,
     val lastDarkTheme: AppVisualTheme = AppVisualTheme.NEON_CYAN_AMBER,
-    val nightModeSetting: NightModeSetting = NightModeSetting.AUTO_SUN,
+    val nightModeSetting: NightModeSetting = NightModeSetting.MANUAL_OFF,
     val nightBrightnessPercent: Int = 20,
-    val speedCalibrationFactor: Float = 1.0f
+    val speedCalibrationFactor: Float = 1.0f,
+    val selectedDiagnosticTestsCsv: String = "",
+    val appLanguage: AppLanguage = AppLanguage.ENGLISH
 )
 
 fun parseTireSizeInches(raw: String): Float? {

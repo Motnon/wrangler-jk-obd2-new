@@ -23,8 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.BluetoothConnected
 import androidx.compose.material.icons.rounded.BluetoothDisabled
-import androidx.compose.material.icons.rounded.CenterFocusStrong
-import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -44,7 +42,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -53,16 +50,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.obd.ConnectionStatus
-import com.example.obd.TrailSensorState
 import com.example.obd.VinInfo
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.CautionYellow
 import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
-import com.example.ui.theme.OverlandAmber
 import com.example.ui.theme.TrailSage
-import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 @Composable
@@ -76,6 +70,7 @@ fun EcuStatusBanner(
     onDisconnectClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     val dotColor by animateColorAsState(
         targetValue = when (connectionStatus) {
             ConnectionStatus.CONNECTED -> TrailSage
@@ -89,7 +84,7 @@ fun EcuStatusBanner(
     val statusText = when (connectionStatus) {
         ConnectionStatus.CONNECTED -> stringResource(R.string.status_connected)
         ConnectionStatus.CONNECTING, ConnectionStatus.INITIALIZING -> stringResource(R.string.status_connecting)
-        ConnectionStatus.ERROR -> "LINK ERROR"
+        ConnectionStatus.ERROR -> strings.linkError
         ConnectionStatus.DISCONNECTED -> stringResource(R.string.status_disconnected)
     }
 
@@ -151,7 +146,7 @@ fun EcuStatusBanner(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "MIL ON",
+                                        text = strings.milOn,
                                         style = MaterialTheme.typography.labelSmall,
                                         color = FaultCrimson
                                     )
@@ -159,14 +154,16 @@ fun EcuStatusBanner(
                             }
                         }
                     }
+                    val displaySubStatus = when {
+                        vinInfo != null && connectionStatus == ConnectionStatus.CONNECTED ->
+                            "${vinInfo.modelYear} JK • ${vinInfo.vin}"
+                        adapterName != null && connectionStatus == ConnectionStatus.CONNECTED ->
+                            adapterName
+                        statusMessage == "Ready to pair ELM327 adapter" -> strings.readyToPairStatus
+                        else -> statusMessage
+                    }
                     Text(
-                        text = when {
-                            vinInfo != null && connectionStatus == ConnectionStatus.CONNECTED ->
-                                "${vinInfo.modelYear} JK • ${vinInfo.vin}"
-                            adapterName != null && connectionStatus == ConnectionStatus.CONNECTED ->
-                                adapterName
-                            else -> statusMessage
-                        },
+                        text = displaySubStatus,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -427,290 +424,3 @@ fun VitalTelemetryTile(
     }
 }
 
-@Composable
-fun TrailInclinometerCard(
-    sensorState: TrailSensorState,
-    pitchTareDeg: Float,
-    rollTareDeg: Float,
-    onTareClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val pitch = (sensorState.pitchDegrees - pitchTareDeg).coerceIn(-60f, 60f)
-    val roll = (sensorState.rollDegrees - rollTareDeg).coerceIn(-60f, 60f)
-    val animatedPitch by animateFloatAsState(
-        targetValue = pitch,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "pitch_anim"
-    )
-    val animatedRoll by animateFloatAsState(
-        targetValue = roll,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "roll_anim"
-    )
-    val isHighAngle = abs(pitch) >= 25f || abs(roll) >= 25f
-    val horizonColor = if (isHighAngle) FaultCrimson else OverlandAmber
-    val frameColor = MaterialTheme.colorScheme.onSurface
-    val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        border = BorderStroke(
-            1.dp,
-            if (isHighAngle) FaultCrimson.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "TRAIL INCLINOMETER",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = if (sensorState.isSensorAvailable) {
-                            "Live device gravity & compass sensors"
-                        } else {
-                            "Accelerometer unavailable on hardware"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onTareClick,
-                    modifier = Modifier.testTag("zero_inclinometer_button"),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.CenterFocusStrong,
-                        contentDescription = stringResource(R.string.action_zero_inclinometer),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = stringResource(R.string.action_zero_inclinometer))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Roll Dial (Rear/Front JK Profile)
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier.size(118.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val center = Offset(size.width / 2f, size.height / 2f)
-                            val radius = size.minDimension / 2f - 8.dp.toPx()
-
-                            drawCircle(
-                                color = gridColor,
-                                radius = radius,
-                                center = center,
-                                style = Stroke(width = 2.dp.toPx())
-                            )
-                            // Horizon baseline
-                            drawLine(
-                                color = gridColor,
-                                start = Offset(center.x - radius, center.y),
-                                end = Offset(center.x + radius, center.y),
-                                strokeWidth = 1.dp.toPx()
-                            )
-
-                            // Rotating Jeep JK Rear Axle / Grille Silhouette
-                            rotate(degrees = -animatedRoll, pivot = center) {
-                                // Axle & tires
-                                drawLine(
-                                    color = horizonColor,
-                                    start = Offset(center.x - radius * 0.72f, center.y + 10.dp.toPx()),
-                                    end = Offset(center.x + radius * 0.72f, center.y + 10.dp.toPx()),
-                                    strokeWidth = 3.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                                // Left & Right Tires
-                                drawLine(
-                                    color = frameColor,
-                                    start = Offset(center.x - radius * 0.62f, center.y + 2.dp.toPx()),
-                                    end = Offset(center.x - radius * 0.62f, center.y + 20.dp.toPx()),
-                                    strokeWidth = 8.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                                drawLine(
-                                    color = frameColor,
-                                    start = Offset(center.x + radius * 0.62f, center.y + 2.dp.toPx()),
-                                    end = Offset(center.x + radius * 0.62f, center.y + 20.dp.toPx()),
-                                    strokeWidth = 8.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                                // JK Hardtop / Rollbar Silhouette
-                                drawRect(
-                                    color = frameColor.copy(alpha = 0.85f),
-                                    topLeft = Offset(center.x - 24.dp.toPx(), center.y - 16.dp.toPx()),
-                                    size = Size(48.dp.toPx(), 22.dp.toPx()),
-                                    style = Stroke(width = 2.5.dp.toPx())
-                                )
-                                drawRect(
-                                    color = horizonColor,
-                                    topLeft = Offset(center.x - 18.dp.toPx(), center.y - 26.dp.toPx()),
-                                    size = Size(36.dp.toPx(), 10.dp.toPx()),
-                                    style = Stroke(width = 2.dp.toPx())
-                                )
-                            }
-                        }
-                    }
-                    Text(
-                        text = "${roll.roundToInt()}° ROLL",
-                        fontFamily = JetBrainsMonoFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = if (abs(roll) >= 25f) FaultCrimson else MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                // Pitch Dial (Side JK Profile)
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier.size(118.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val center = Offset(size.width / 2f, size.height / 2f)
-                            val radius = size.minDimension / 2f - 8.dp.toPx()
-
-                            drawCircle(
-                                color = gridColor,
-                                radius = radius,
-                                center = center,
-                                style = Stroke(width = 2.dp.toPx())
-                            )
-                            drawLine(
-                                color = gridColor,
-                                start = Offset(center.x - radius, center.y),
-                                end = Offset(center.x + radius, center.y),
-                                strokeWidth = 1.dp.toPx()
-                            )
-
-                            rotate(degrees = animatedPitch, pivot = center) {
-                                // Chassis rail
-                                drawLine(
-                                    color = horizonColor,
-                                    start = Offset(center.x - radius * 0.72f, center.y + 8.dp.toPx()),
-                                    end = Offset(center.x + radius * 0.72f, center.y + 8.dp.toPx()),
-                                    strokeWidth = 3.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                                // Front & Rear Wheels
-                                drawCircle(
-                                    color = frameColor,
-                                    radius = 9.dp.toPx(),
-                                    center = Offset(center.x - 22.dp.toPx(), center.y + 12.dp.toPx()),
-                                    style = Stroke(width = 3.dp.toPx())
-                                )
-                                drawCircle(
-                                    color = frameColor,
-                                    radius = 9.dp.toPx(),
-                                    center = Offset(center.x + 22.dp.toPx(), center.y + 12.dp.toPx()),
-                                    style = Stroke(width = 3.dp.toPx())
-                                )
-                                // Side JK tub + hood
-                                drawLine(
-                                    color = frameColor,
-                                    start = Offset(center.x - 32.dp.toPx(), center.y + 4.dp.toPx()),
-                                    end = Offset(center.x - 32.dp.toPx(), center.y - 18.dp.toPx()),
-                                    strokeWidth = 2.5.dp.toPx()
-                                )
-                                drawLine(
-                                    color = frameColor,
-                                    start = Offset(center.x - 32.dp.toPx(), center.y - 18.dp.toPx()),
-                                    end = Offset(center.x + 6.dp.toPx(), center.y - 18.dp.toPx()),
-                                    strokeWidth = 2.5.dp.toPx()
-                                )
-                                drawLine(
-                                    color = frameColor,
-                                    start = Offset(center.x + 6.dp.toPx(), center.y - 18.dp.toPx()),
-                                    end = Offset(center.x + 14.dp.toPx(), center.y - 4.dp.toPx()),
-                                    strokeWidth = 2.5.dp.toPx()
-                                )
-                                drawLine(
-                                    color = frameColor,
-                                    start = Offset(center.x + 14.dp.toPx(), center.y - 4.dp.toPx()),
-                                    end = Offset(center.x + 34.dp.toPx(), center.y - 4.dp.toPx()),
-                                    strokeWidth = 2.5.dp.toPx()
-                                )
-                            }
-                        }
-                    }
-                    Text(
-                        text = "${pitch.roundToInt()}° PITCH",
-                        fontFamily = JetBrainsMonoFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = if (abs(pitch) >= 25f) FaultCrimson else MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-
-            if (sensorState.hasCompassSensor) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.surface
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Rounded.Explore,
-                                contentDescription = "Compass heading",
-                                tint = TrailSage,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "TRAIL HEADING",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = "${sensorState.azimuthDegrees.roundToInt()}° ${cardinalDirection(sensorState.azimuthDegrees)}",
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = TrailSage
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun cardinalDirection(deg: Float): String {
-    val dirs = arrayOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
-    val idx = (((deg + 22.5f) % 360f) / 45f).toInt().coerceIn(0, 7)
-    return dirs[idx]
-}

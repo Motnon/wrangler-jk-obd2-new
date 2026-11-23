@@ -42,6 +42,7 @@ import com.example.ui.components.CircularArcGauge
 import com.example.ui.components.EcuStatusBanner
 import com.example.ui.components.TrailInclinometerCard
 import com.example.ui.components.VitalTelemetryTile
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.CautionYellow
 import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -65,6 +66,7 @@ fun CockpitScreen(
     onTareInclinometer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     val isImperialMap = rigPrefs.unitSystem == UnitSystem.IMPERIAL
     val redlineRpm = when (rigPrefs.engineProfile) {
         JkEngineProfile.PENTASTAR_3_6 -> 6400f
@@ -128,9 +130,9 @@ fun CockpitScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         CircularArcGauge(
-                            title = "Engine RPM",
+                            title = strings.cockpitEngineRpm,
                             valueText = telemetry.rpm?.toString() ?: "--",
-                            unit = "RPM",
+                            unit = strings.rpmUnit,
                             value = telemetry.rpm?.toFloat(),
                             minValue = 0f,
                             maxValue = maxRpmScale,
@@ -139,7 +141,7 @@ fun CockpitScreen(
                             modifier = Modifier.weight(1f)
                         )
                         CircularArcGauge(
-                            title = "Coolant Temp",
+                            title = strings.cockpitCoolantTemp,
                             valueText = coolantDisplayValue?.roundToInt()?.toString() ?: "--",
                             unit = "°C",
                             value = coolantDisplayValue,
@@ -165,7 +167,7 @@ fun CockpitScreen(
                                     batteryText = batteryText,
                                     isLowBattery = isLowBattery,
                                     speedText = speedDisplayText,
-                                    speedUnit = "KPH",
+                                    speedUnit = strings.speedUnitKph,
                                     intakeText = intakeDisplayText,
                                     tempUnit = "°C",
                                     loadText = loadText,
@@ -186,7 +188,7 @@ fun CockpitScreen(
                             batteryText = batteryText,
                             isLowBattery = isLowBattery,
                             speedText = speedDisplayText,
-                            speedUnit = "KPH",
+                            speedUnit = strings.speedUnitKph,
                             intakeText = intakeDisplayText,
                             tempUnit = "°C",
                             loadText = loadText,
@@ -221,13 +223,14 @@ private fun VitalGridSection(
     telemetry: LiveTelemetry,
     isImperial: Boolean
 ) {
+    val strings = LocalAppStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             VitalTelemetryTile(
-                label = "Battery / Alt",
+                label = strings.cockpitBatteryAlt,
                 valueText = batteryText,
                 unit = "V",
                 icon = Icons.Rounded.BatteryChargingFull,
@@ -235,7 +238,7 @@ private fun VitalGridSection(
                 modifier = Modifier.weight(1f)
             )
             VitalTelemetryTile(
-                label = "Vehicle Speed",
+                label = strings.cockpitVehicleSpeed,
                 valueText = speedText,
                 unit = speedUnit,
                 icon = Icons.Rounded.Speed,
@@ -248,7 +251,7 @@ private fun VitalGridSection(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             VitalTelemetryTile(
-                label = "Intake Air",
+                label = strings.cockpitIntakeAir,
                 valueText = intakeText,
                 unit = tempUnit,
                 icon = Icons.Rounded.Air,
@@ -256,7 +259,7 @@ private fun VitalGridSection(
                 modifier = Modifier.weight(1f)
             )
             VitalTelemetryTile(
-                label = "Engine Load",
+                label = strings.cockpitEngineLoad,
                 valueText = loadText,
                 unit = "%",
                 icon = Icons.Rounded.Tune,
@@ -290,9 +293,9 @@ private fun VitalGridSection(
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                MiniMetric("THROTTLE", throttleText, Icons.Rounded.Compress)
-                MiniMetric("MAP", "$mapValueText $mapUnit", Icons.Rounded.Compress)
-                MiniMetric("STFT B1", stftText, Icons.Rounded.LocalGasStation)
+                MiniMetric(strings.miniThrottle, throttleText, Icons.Rounded.Compress)
+                MiniMetric(strings.miniMap, "$mapValueText $mapUnit", Icons.Rounded.Compress)
+                MiniMetric(strings.fuelTrimLabel, stftText, Icons.Rounded.LocalGasStation)
                 MiniMetric("LTFT B1", ltftText, Icons.Rounded.LocalGasStation)
             }
         }

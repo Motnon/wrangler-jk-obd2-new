@@ -42,4 +42,12 @@ class SolarAndCalibrationTest {
         assertEquals(109, applyCalibratedSpeedKph(100, factor))
         assertEquals(80, applyCalibratedSpeedKph(80, 1.0f))
     }
+
+    @Test
+    fun `default rig preferences use Neon Cyan and Amber with night rotation off`() {
+        val defaults = com.example.obd.RigPreferences()
+        assertEquals(com.example.obd.AppVisualTheme.NEON_CYAN_AMBER, defaults.visualTheme)
+        assertEquals(com.example.obd.AppVisualTheme.NEON_CYAN_AMBER, defaults.lastDarkTheme)
+        assertEquals(com.example.obd.NightModeSetting.MANUAL_OFF, defaults.nightModeSetting)
+    }
 }

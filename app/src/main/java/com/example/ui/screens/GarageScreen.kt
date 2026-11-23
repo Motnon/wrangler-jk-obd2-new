@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.ScanRecordEntity
+import com.example.obd.AppLanguage
 import com.example.obd.AppVisualTheme
 import com.example.obd.JkEngineProfile
 import com.example.obd.LiveTelemetry
@@ -63,6 +64,8 @@ import com.example.sensors.GpsTelemetryState
 import com.example.sensors.SolarSchedule
 import com.example.ui.components.DisplayAndNightModeCard
 import com.example.ui.components.GpsSpeedCalibrationCard
+import com.example.ui.components.LanguageSelectionCard
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.OverlandAmber
@@ -89,6 +92,7 @@ fun GarageScreen(
     onSelectVisualTheme: (AppVisualTheme) -> Unit,
     onSelectNightMode: (NightModeSetting) -> Unit,
     onNightBrightnessChange: (Int) -> Unit,
+    onSelectAppLanguage: (AppLanguage) -> Unit,
     onLocationPermissionResult: (Boolean, Boolean) -> Unit,
     onStartGpsCalibration: () -> Unit,
     onStopGpsCalibration: () -> Unit,
@@ -99,13 +103,16 @@ fun GarageScreen(
     onDeleteScanRecord: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     var nicknameInput by remember(rigPrefs.rigNickname) { mutableStateOf(rigPrefs.rigNickname) }
     var tireInput by remember(rigPrefs.tireSizeInches) { mutableStateOf(rigPrefs.tireSizeInches) }
     var axleInput by remember(rigPrefs.axleGearRatio) { mutableStateOf(rigPrefs.axleGearRatio) }
     var coolantSlider by remember(rigPrefs.coolantWarnCelsius) { mutableIntStateOf(rigPrefs.coolantWarnCelsius) }
     var batterySlider by remember(rigPrefs.lowBatteryVolts) { mutableFloatStateOf(rigPrefs.lowBatteryVolts) }
 
-    val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy • HH:mm", Locale.US) }
+    val dateFormatter = remember(rigPrefs.appLanguage) {
+        SimpleDateFormat("MMM d, yyyy • HH:mm", Locale(rigPrefs.appLanguage.code))
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -160,13 +167,19 @@ fun GarageScreen(
                                 color = Color.White
                             )
                             Text(
-                                text = "${rigPrefs.engineProfile.label} • ${rigPrefs.tireSizeInches} Tires • ${rigPrefs.axleGearRatio} Gears",
+                                text = String.format(
+                                    Locale.US,
+                                    strings.heroSubtitleFormat,
+                                    strings.engineChipLabel(rigPrefs.engineProfile),
+                                    rigPrefs.tireSizeInches,
+                                    rigPrefs.axleGearRatio
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OverlandAmber
                             )
                             if (vinInfo != null) {
                                 Text(
-                                    text = "VIN ${vinInfo.vin} (${vinInfo.modelYear} • ${vinInfo.plantSummary})",
+                                    text = "${strings.vinPrefix} ${vinInfo.vin} (${vinInfo.modelYear} • ${vinInfo.plantSummary})",
                                     fontFamily = JetBrainsMonoFontFamily,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TrailSage
@@ -175,6 +188,12 @@ fun GarageScreen(
                         }
                     }
                 }
+
+                // App Language Selector (English / Hebrew)
+                LanguageSelectionCard(
+                    selectedLanguage = rigPrefs.appLanguage,
+                    onSelectLanguage = onSelectAppLanguage
+                )
 
                 // JK Rig & Powertrain Configuration
                 Surface(
@@ -195,7 +214,7 @@ fun GarageScreen(
                             )
                             Spacer(modifier = Modifier.size(8.dp))
                             Text(
-                                text = "WRANGLER JK POWERTRAIN & BUILD",
+                                text = strings.powertrainHeader,
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -209,15 +228,7 @@ fun GarageScreen(
                                 FilterChip(
                                     selected = rigPrefs.engineProfile == profile,
                                     onClick = { onSelectEngine(profile) },
-                                    label = {
-                                        Text(
-                                            text = when (profile) {
-                                                JkEngineProfile.PENTASTAR_3_6 -> "3.6L Pentastar"
-                                                JkEngineProfile.EGH_3_8 -> "3.8L V6"
-                                                JkEngineProfile.CRD_2_8 -> "2.8L CRD"
-                                            }
-                                        )
-                                    },
+                                    label = { Text(text = strings.engineChipLabel(profile)) },
                                     modifier = Modifier.testTag("engine_chip_${profile.name.lowercase()}")
                                 )
                             }
@@ -226,7 +237,7 @@ fun GarageScreen(
                         OutlinedTextField(
                             value = nicknameInput,
                             onValueChange = { nicknameInput = it },
-                            label = { Text("Rig Name") },
+                            label = { Text(strings.rigNameLabel) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -238,14 +249,14 @@ fun GarageScreen(
                             OutlinedTextField(
                                 value = tireInput,
                                 onValueChange = { tireInput = it },
-                                label = { Text("Tire Size") },
+                                label = { Text(strings.tireSizeLabel) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
                             OutlinedTextField(
                                 value = axleInput,
                                 onValueChange = { axleInput = it },
-                                label = { Text("Axle Ratio") },
+                                label = { Text(strings.axleRatioLabel) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
@@ -257,7 +268,7 @@ fun GarageScreen(
                                 .fillMaxWidth()
                                 .testTag("save_rig_profile_button")
                         ) {
-                            Text("Save Rig Profile")
+                            Text(strings.saveRigProfile)
                         }
                     }
                 }
@@ -305,7 +316,7 @@ fun GarageScreen(
                             )
                             Spacer(modifier = Modifier.size(8.dp))
                             Text(
-                                text = "UNITS & TRAIL ALERTS",
+                                text = strings.unitsAlertsHeader,
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -322,9 +333,9 @@ fun GarageScreen(
                                     label = {
                                         Text(
                                             if (system == UnitSystem.METRIC) {
-                                                "Metric (KPH / °C / kPa)"
+                                                strings.metricOption
                                             } else {
-                                                "MAP PSI (KPH / °C)"
+                                                strings.imperialMapOption
                                             }
                                         )
                                     },
@@ -340,7 +351,7 @@ fun GarageScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "Coolant High-Temp Warning",
+                                    text = strings.coolantWarnLabel,
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
@@ -366,7 +377,7 @@ fun GarageScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "Low Battery Voltage Warning",
+                                    text = strings.batteryWarnLabel,
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
@@ -391,7 +402,7 @@ fun GarageScreen(
                                 onClick = onResetInclinometerTare,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Reset Inclinometer Factory Zero")
+                                Text(strings.resetInclinometerZero)
                             }
                         }
                     }
@@ -409,7 +420,7 @@ fun GarageScreen(
                     )
                     Spacer(modifier = Modifier.size(8.dp))
                     Text(
-                        text = "ECU DIAGNOSTIC LOG (${scanHistory.size})",
+                        text = String.format(Locale.US, strings.ecuDiagLogFormat, scanHistory.size),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -432,13 +443,13 @@ fun GarageScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "No saved ECU snapshots yet",
+                            text = strings.noSavedSnapshots,
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Use the DTC Scan tab to save an ECU fault & telemetry snapshot after connecting to your Jeep.",
+                            text = strings.noSavedSnapshotsBody,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -478,10 +489,10 @@ fun GarageScreen(
                             )
                             val codeSummary = when {
                                 record.activeCodes.isNotEmpty() ->
-                                    "Active: ${record.activeCodes.joinToString(", ")}"
+                                    String.format(Locale.US, strings.activeDtcPrefix, record.activeCodes.joinToString(", "))
                                 record.pendingCodes.isNotEmpty() ->
-                                    "Pending: ${record.pendingCodes.joinToString(", ")}"
-                                else -> "Clean Scan (0 DTCs)"
+                                    String.format(Locale.US, strings.pendingDtcPrefix, record.pendingCodes.joinToString(", "))
+                                else -> strings.cleanScanZeroDtcs
                             }
                             Text(
                                 text = codeSummary,

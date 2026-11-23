@@ -22,6 +22,9 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import com.example.obd.BluetoothDeviceItem
 import com.example.obd.ConnectionStatus
+import com.example.obd.DiagnosticReading
+import com.example.obd.DiagnosticScanEngine
+import com.example.obd.DiagnosticTestId
 import com.example.obd.Elm327Protocol
 import com.example.obd.LiveTelemetry
 import com.example.obd.TerminalDirection
@@ -141,6 +144,27 @@ class BluetoothManager(private val context: Context) {
         )
     )
     val terminalLogs: StateFlow<List<TerminalEntry>> = _terminalLogs.asStateFlow()
+
+    private val diagnosticScanEngine = DiagnosticScanEngine()
+
+    private val _appliedDiagnosticTests = MutableStateFlow<Set<DiagnosticTestId>>(emptySet())
+    val appliedDiagnosticTests: StateFlow<Set<DiagnosticTestId>> = _appliedDiagnosticTests.asStateFlow()
+
+    private val _diagnosticReadings = MutableStateFlow<Map<DiagnosticTestId, DiagnosticReading>>(emptyMap())
+    val diagnosticReadings: StateFlow<Map<DiagnosticTestId, DiagnosticReading>> = _diagnosticReadings.asStateFlow()
+
+    private val _isDiagnosticScreenActive = MutableStateFlow(false)
+    private val _isDiagnosticScanPaused = MutableStateFlow(false)
+    val isDiagnosticScanPaused: StateFlow<Boolean> = _isDiagnosticScanPaused.asStateFlow()
+
+    private val _diagnosticCycleCount = MutableStateFlow(0L)
+    val diagnosticCycleCount: StateFlow<Long> = _diagnosticCycleCount.asStateFlow()
+
+    @Volatile
+    private var speedCalibrationFactor: Float = 1.0f
+
+    @Volatile
+    private var coolantWarnCelsius: Int = 108
 
     private var classicSocket: BluetoothSocket? = null
     private var classicIn: InputStream? = null
@@ -410,6 +434,7 @@ class BluetoothManager(private val context: Context) {
 
             _connectionStatus.value = ConnectionStatus.CONNECTED
             _statusMessage.value = "ECU Link Active — ${deviceItem.name}"
+            publishDiagnosticReadings()
             appendTerminal(
                 TerminalDirection.INFO,
                 "ELM327 initialized (ISO 15765-4 CAN 11-bit 500kbps). Streaming Wrangler JK PIDs."
@@ -457,6 +482,9 @@ class BluetoothManager(private val context: Context) {
             _connectedDevice.value = null
             _statusMessage.value = "Disconnected from OBD-II adapter"
             _telemetry.value = LiveTelemetry()
+            _diagnosticCycleCount.value = 0L
+            diagnosticScanEngine.resetSession()
+            publishDiagnosticReadings()
             appendTerminal(TerminalDirection.INFO, "OBD-II session closed.")
         }
     }
@@ -678,6 +706,7 @@ class BluetoothManager(private val context: Context) {
 
     private suspend fun initializeElm327(): Boolean {
         var anyOk = false
+        var supportedPidsOk = false
         for (cmd in ELM327_INIT_SEQUENCE) {
             val timeout = INIT_COMMAND_TIMEOUT_MS
             val resp = sendCommandRaw(cmd, timeoutMs = timeout, logTerminal = true)
@@ -687,10 +716,66 @@ class BluetoothManager(private val context: Context) {
                 anyOk = true
             } else if (resp != null && !Elm327Protocol.isErrorResponse(resp) && resp.isNotBlank()) {
                 anyOk = true
+                if (cmd == "0100" && !Elm327Protocol.isNegativeResponse(resp)) {
+                    supportedPidsOk = true
+                }
             }
             delay(150L)
         }
+        if (!supportedPidsOk) {
+            // Fallback to Auto Protocol if fixed 11-bit 500kbps CAN probe failed
+            sendCommandRaw("ATSP0", timeoutMs = INIT_COMMAND_TIMEOUT_MS, logTerminal = true)
+            delay(150L)
+            val fallbackResp = sendCommandRaw("0100", timeoutMs = INIT_COMMAND_TIMEOUT_MS, logTerminal = true)
+            if (fallbackResp != null &&
+                !Elm327Protocol.isErrorResponse(fallbackResp) &&
+                !Elm327Protocol.isNegativeResponse(fallbackResp) &&
+                fallbackResp.isNotBlank()
+            ) {
+                anyOk = true
+            }
+        }
         return anyOk
+    }
+
+    fun updateDiagnosticSettings(speedFactor: Float, coolantWarnC: Int) {
+        speedCalibrationFactor = speedFactor
+        coolantWarnCelsius = coolantWarnC
+        publishDiagnosticReadings()
+    }
+
+    fun setAppliedDiagnosticTests(tests: Set<DiagnosticTestId>, forceReprobe: Boolean = false) {
+        _appliedDiagnosticTests.value = tests
+        if (forceReprobe) {
+            diagnosticScanEngine.clearUnsupportedCache()
+            _isDiagnosticScanPaused.value = false
+        }
+        publishDiagnosticReadings()
+    }
+
+    fun setDiagnosticScreenActive(active: Boolean) {
+        _isDiagnosticScreenActive.value = active
+        publishDiagnosticReadings()
+    }
+
+    fun toggleDiagnosticScanPaused() {
+        _isDiagnosticScanPaused.value = !_isDiagnosticScanPaused.value
+    }
+
+    fun reprobeUnsupportedDiagnostics() {
+        diagnosticScanEngine.clearUnsupportedCache()
+        _isDiagnosticScanPaused.value = false
+        publishDiagnosticReadings()
+    }
+
+    private fun publishDiagnosticReadings() {
+        val connected = _connectionStatus.value == ConnectionStatus.CONNECTED
+        _diagnosticReadings.value = diagnosticScanEngine.buildReadingsMap(
+            selectedTests = _appliedDiagnosticTests.value,
+            isConnected = connected,
+            speedCalibrationFactor = speedCalibrationFactor,
+            coolantWarnCelsius = coolantWarnCelsius
+        )
     }
 
     private fun startPollingLoop() {
@@ -698,29 +783,62 @@ class BluetoothManager(private val context: Context) {
         pollingJob = scope.launch {
             var tick = 0
             while (_connectionStatus.value == ConnectionStatus.CONNECTED) {
-                applyPid(sendCommandRaw("010C", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0C)
-                applyPid(sendCommandRaw("0105", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x05)
-                applyPid(sendCommandRaw("010D", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0D)
+                val chosenTests = _appliedDiagnosticTests.value
+                val customScanActive = _isDiagnosticScreenActive.value &&
+                    !_isDiagnosticScanPaused.value &&
+                    chosenTests.isNotEmpty()
 
-                if (tick % 2 == 0) {
-                    applyPid(sendCommandRaw("012F", POLL_COMMAND_TIMEOUT_MS, logTerminal = (tick == 0)), expectedPid = 0x2F)
-                    val voltResp = sendCommandRaw("ATRV", POLL_COMMAND_TIMEOUT_MS, logTerminal = false)
-                    voltResp?.let { Elm327Protocol.parseVoltageResponse(it) }?.let { v ->
-                        _telemetry.update { it.copy(batteryVolts = v, lastUpdatedMs = System.currentTimeMillis()) }
+                if (customScanActive) {
+                    val plan = diagnosticScanEngine.buildCommandPlan(chosenTests)
+                    if (plan.isNotEmpty()) {
+                        for (cmd in plan) {
+                            if (_connectionStatus.value != ConnectionStatus.CONNECTED ||
+                                !_isDiagnosticScreenActive.value ||
+                                _isDiagnosticScanPaused.value
+                            ) {
+                                break
+                            }
+                            val resp = sendCommandRaw(cmd, POLL_COMMAND_TIMEOUT_MS, logTerminal = false)
+                            val decoded = diagnosticScanEngine.processCommandResponse(cmd, resp)
+                            if (decoded != null) {
+                                applyDecodedToTelemetry(decoded)
+                            }
+                            publishDiagnosticReadings()
+                            delay(25L)
+                        }
+                        _diagnosticCycleCount.update { it + 1 }
                     }
-                    applyPid(sendCommandRaw("0111", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x11)
-                    applyPid(sendCommandRaw("0104", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x04)
+                    delay(120L)
+                } else {
+                    applyPid(sendCommandRaw("010C", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0C)
+                    applyPid(sendCommandRaw("0105", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x05)
+                    applyPid(sendCommandRaw("010D", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0D)
+
+                    if (tick % 2 == 0) {
+                        applyPid(sendCommandRaw("012F", POLL_COMMAND_TIMEOUT_MS, logTerminal = (tick == 0)), expectedPid = 0x2F)
+                        val voltResp = sendCommandRaw("ATRV", POLL_COMMAND_TIMEOUT_MS, logTerminal = false)
+                        voltResp?.let { Elm327Protocol.parseVoltageResponse(it) }?.let { v ->
+                            _telemetry.update { it.copy(batteryVolts = v, lastUpdatedMs = System.currentTimeMillis()) }
+                            diagnosticScanEngine.applyDecodedPid(Elm327Protocol.DecodedPid.ControlModuleVoltage(v))
+                        }
+                        applyPid(sendCommandRaw("0111", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x11)
+                        applyPid(sendCommandRaw("0104", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x04)
+                    }
+                    if (tick % 4 == 0) {
+                        applyPid(sendCommandRaw("010F", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0F)
+                        applyPid(sendCommandRaw("010B", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0B)
+                        applyPid(sendCommandRaw("0106", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x06)
+                        applyPid(sendCommandRaw("0107", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x07)
+                        applyPid(sendCommandRaw("0146", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x46)
+                        applyPid(sendCommandRaw("0101", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x01)
+                    }
+                    if (tick == 4 && _vinInfo.value == null) {
+                        queryVinInternal()
+                    }
+                    publishDiagnosticReadings()
+                    tick++
+                    delay(250L)
                 }
-                if (tick % 4 == 0) {
-                    applyPid(sendCommandRaw("010F", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0F)
-                    applyPid(sendCommandRaw("010B", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0B)
-                    applyPid(sendCommandRaw("0106", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x06)
-                    applyPid(sendCommandRaw("0107", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x07)
-                    applyPid(sendCommandRaw("0146", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x46)
-                    applyPid(sendCommandRaw("0101", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x01)
-                }
-                tick++
-                delay(250L)
             }
         }
     }
@@ -728,6 +846,11 @@ class BluetoothManager(private val context: Context) {
     private fun applyPid(raw: String?, expectedPid: Int? = null) {
         if (raw == null) return
         val decoded = Elm327Protocol.decodeMode01(raw, expectedPid = expectedPid) ?: return
+        diagnosticScanEngine.applyDecodedPid(decoded)
+        applyDecodedToTelemetry(decoded)
+    }
+
+    private fun applyDecodedToTelemetry(decoded: Elm327Protocol.DecodedPid) {
         val now = System.currentTimeMillis()
         _telemetry.update { state ->
             when (decoded) {
@@ -748,6 +871,7 @@ class BluetoothManager(private val context: Context) {
                     ecuDtcCount = decoded.dtcCount,
                     lastUpdatedMs = now
                 )
+                else -> state.copy(lastUpdatedMs = now)
             }
         }
     }
@@ -768,7 +892,11 @@ class BluetoothManager(private val context: Context) {
             }
             val resp = sendCommandRaw(trimmed, timeoutMs = timeout, logTerminal = true)
             if (resp != null) {
-                applyPid(resp)
+                if (trimmed == "0902") {
+                    Elm327Protocol.decodeVinResponse(resp)?.let { _vinInfo.value = it }
+                } else {
+                    applyPid(resp)
+                }
             }
         }
     }

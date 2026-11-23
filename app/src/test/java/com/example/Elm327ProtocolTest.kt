@@ -103,6 +103,24 @@ class Elm327ProtocolTest {
         val echoedFuel = Elm327Protocol.decodeMode01("012F 412F9A", expectedPid = 0x2F)
         assertTrue(echoedFuel is Elm327Protocol.DecodedPid.FuelLevel)
         assertEquals((0x9A * 100f) / 255f, (echoedFuel as Elm327Protocol.DecodedPid.FuelLevel).percent, 0.1f)
+
+        // OBD Speed (010D) in KPH: stationary 0 KPH, CAN header, echo, and multi-ECU tolerance
+        assertEquals(
+            Elm327Protocol.DecodedPid.Speed(0),
+            Elm327Protocol.decodeMode01("41 0D 00", expectedPid = 0x0D)
+        )
+        assertEquals(
+            Elm327Protocol.DecodedPid.Speed(100),
+            Elm327Protocol.decodeMode01("7E8 03 41 0D 64", expectedPid = 0x0D)
+        )
+        assertEquals(
+            Elm327Protocol.DecodedPid.Speed(72),
+            Elm327Protocol.decodeMode01("010D\r41 0D 48\r>", expectedPid = 0x0D)
+        )
+        assertEquals(
+            Elm327Protocol.DecodedPid.Speed(80),
+            Elm327Protocol.decodeMode01("7E8 03 41 0D 50\r7E9 03 7F 01 11", expectedPid = 0x0D)
+        )
     }
 
     @Test

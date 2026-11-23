@@ -1,6 +1,10 @@
 package com.example
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -8,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.FactCheck
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.SportsScore
 import androidx.compose.material.icons.outlined.Terminal
@@ -33,6 +39,7 @@ import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.BluetoothConnected
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.DirectionsCar
+import androidx.compose.material.icons.rounded.FactCheck
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.SportsScore
 import androidx.compose.material.icons.rounded.Terminal
@@ -62,12 +69,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -80,26 +91,29 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.obd.AppLanguage
 import com.example.obd.AppVisualTheme
 import com.example.obd.ConnectionStatus
 import com.example.sensors.PhoneBatteryState
 import com.example.ui.components.BluetoothConnectSheet
+import com.example.ui.i18n.AppStrings
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.screens.CockpitScreen
 import com.example.ui.screens.GarageScreen
+import com.example.ui.screens.LiveDiagnosticsScreen
 import com.example.ui.screens.RaceScreen
 import com.example.ui.screens.ScannerScreen
 import com.example.ui.screens.TerminalScreen
-import com.example.ui.theme.CautionYellow
-import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.JetBrainsMonoFontFamily
-import com.example.ui.theme.OverlandAmber
-import com.example.ui.theme.TrailSage
+import com.example.ui.theme.LocalRacePalette
 import com.example.ui.theme.WranglerObdTheme
 import com.example.viewmodel.WranglerObdViewModel
+import java.util.Locale
 
 const val ROUTE_COCKPIT = "cockpit"
 const val ROUTE_RACE = "race"
+const val ROUTE_DIAGNOSTICS = "diagnostics"
 const val ROUTE_SCANNER = "scanner"
 const val ROUTE_TERMINAL = "terminal"
 const val ROUTE_GARAGE = "garage"
@@ -112,6 +126,13 @@ private data class NavDestination(
     val testTag: String
 )
 
+private class LocalizedContextWrapper(
+    base: Context,
+    private val localizedResources: Resources
+) : ContextWrapper(base) {
+    override fun getResources(): Resources = localizedResources
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,11 +142,42 @@ class MainActivity : ComponentActivity() {
             val rigPrefs by viewModel.rigPreferences.collectAsStateWithLifecycle()
             val isNightModeActive by viewModel.isNightModeActive.collectAsStateWithLifecycle()
 
-            WranglerObdTheme(
-                visualTheme = rigPrefs.visualTheme,
-                isNightMode = isNightModeActive
+            val baseContext = LocalContext.current
+            val baseConfig = LocalConfiguration.current
+            val appLanguage = rigPrefs.appLanguage
+
+            val localizedEnv = remember(appLanguage, baseConfig) {
+                val locale = Locale(appLanguage.code)
+                Locale.setDefault(locale)
+                val newConfig = Configuration(baseConfig).apply {
+                    setLocale(locale)
+                    setLayoutDirection(locale)
+                }
+                val configCtx = baseContext.createConfigurationContext(newConfig)
+                val wrappedCtx = LocalizedContextWrapper(baseContext, configCtx.resources)
+                val layoutDir = if (appLanguage == AppLanguage.HEBREW) {
+                    LayoutDirection.Rtl
+                } else {
+                    LayoutDirection.Ltr
+                }
+                Triple(newConfig, wrappedCtx, layoutDir)
+            }
+
+            CompositionLocalProvider(
+                LocalConfiguration provides localizedEnv.first,
+                LocalContext provides localizedEnv.second,
+                LocalLayoutDirection provides localizedEnv.third,
+                LocalAppStrings provides AppStrings.forLanguage(appLanguage)
             ) {
-                WranglerObdApp(viewModel = viewModel)
+                WranglerObdTheme(
+                    visualTheme = rigPrefs.visualTheme,
+                    isNightMode = isNightModeActive
+                ) {
+                    WranglerObdApp(
+                        viewModel = viewModel,
+                        hostActivity = this@MainActivity
+                    )
+                }
             }
         }
     }
@@ -134,7 +186,8 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WranglerObdApp(
-    viewModel: WranglerObdViewModel = viewModel()
+    viewModel: WranglerObdViewModel = viewModel(),
+    hostActivity: Activity? = null
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -161,14 +214,22 @@ fun WranglerObdApp(
     val dtcSearchQuery by viewModel.dtcSearchQuery.collectAsStateWithLifecycle()
     val selectedSubsystem by viewModel.selectedSubsystem.collectAsStateWithLifecycle()
     val catalogCodes by viewModel.filteredCatalogCodes.collectAsStateWithLifecycle()
+    val appliedDiagnosticTests by viewModel.appliedDiagnosticTests.collectAsStateWithLifecycle()
+    val diagnosticReadings by viewModel.diagnosticReadings.collectAsStateWithLifecycle()
+    val isDiagnosticScanPaused by viewModel.isDiagnosticScanPaused.collectAsStateWithLifecycle()
+    val diagnosticCycleCount by viewModel.diagnosticCycleCount.collectAsStateWithLifecycle()
     val feedbackMessage by viewModel.uiFeedbackMessage.collectAsStateWithLifecycle()
+
+    LaunchedEffect(currentRoute) {
+        viewModel.setDiagnosticScreenVisible(currentRoute == ROUTE_DIAGNOSTICS)
+    }
 
     var showBluetoothSheet by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val context = LocalContext.current
     LaunchedEffect(isNightModeActive, rigPrefs.nightBrightnessPercent) {
-        val window = (context as? Activity)?.window ?: return@LaunchedEffect
+        val window = (hostActivity ?: (context as? Activity))?.window ?: return@LaunchedEffect
         val params = window.attributes
         params.screenBrightness = if (isNightModeActive) {
             (rigPrefs.nightBrightnessPercent / 100f).coerceIn(0.05f, 0.70f)
@@ -224,6 +285,13 @@ fun WranglerObdApp(
                 selectedIcon = Icons.Rounded.SportsScore,
                 unselectedIcon = Icons.Outlined.SportsScore,
                 testTag = "nav_tab_race"
+            ),
+            NavDestination(
+                route = ROUTE_DIAGNOSTICS,
+                labelRes = R.string.nav_diagnostics,
+                selectedIcon = Icons.Rounded.FactCheck,
+                unselectedIcon = Icons.Outlined.FactCheck,
+                testTag = "nav_tab_diagnostics"
             ),
             NavDestination(
                 route = ROUTE_COCKPIT,
@@ -307,8 +375,8 @@ fun WranglerObdApp(
                                     contentDescription = stringResource(R.string.cd_connect_bluetooth),
                                     tint = when {
                                         isNightModeActive -> MaterialTheme.colorScheme.primary
-                                        connectionStatus == ConnectionStatus.CONNECTED -> TrailSage
-                                        else -> OverlandAmber
+                                        connectionStatus == ConnectionStatus.CONNECTED -> LocalRacePalette.current.zone2
+                                        else -> LocalRacePalette.current.zone4
                                     },
                                     modifier = Modifier.size(22.dp)
                                 )
@@ -343,10 +411,11 @@ fun WranglerObdApp(
                                         text = label,
                                         maxLines = 1,
                                         softWrap = false,
+                                        overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontFamily = InterFontFamily,
                                             fontWeight = FontWeight.SemiBold,
-                                            fontSize = 10.sp,
+                                            fontSize = 9.sp,
                                             letterSpacing = 0.sp
                                         )
                                     )
@@ -413,6 +482,24 @@ fun WranglerObdApp(
                             onSetRaceLayoutLocked = viewModel::setRaceLayoutLocked
                         )
                     }
+                    composable(ROUTE_DIAGNOSTICS) {
+                        LiveDiagnosticsScreen(
+                            connectionStatus = connectionStatus,
+                            connectedDevice = connectedDevice,
+                            statusMessage = statusMessage,
+                            vinInfo = vinInfo,
+                            telemetry = telemetry,
+                            appliedTests = appliedDiagnosticTests,
+                            readings = diagnosticReadings,
+                            isScanPaused = isDiagnosticScanPaused,
+                            cycleCount = diagnosticCycleCount,
+                            onApplyTests = viewModel::applyDiagnosticTests,
+                            onTogglePause = viewModel::toggleDiagnosticScanPaused,
+                            onReprobeUnsupported = viewModel::reprobeUnsupportedDiagnostics,
+                            onOpenBluetoothSheet = { showBluetoothSheet = true },
+                            onDisconnect = viewModel::disconnectAdapter
+                        )
+                    }
                     composable(ROUTE_COCKPIT) {
                         CockpitScreen(
                             connectionStatus = connectionStatus,
@@ -471,6 +558,7 @@ fun WranglerObdApp(
                             onSelectVisualTheme = viewModel::setVisualTheme,
                             onSelectNightMode = viewModel::setNightModeSetting,
                             onNightBrightnessChange = viewModel::setNightBrightnessPercent,
+                            onSelectAppLanguage = viewModel::setAppLanguage,
                             onLocationPermissionResult = viewModel::onLocationPermissionResult,
                             onStartGpsCalibration = viewModel::startGpsCalibration,
                             onStopGpsCalibration = viewModel::stopGpsCalibration,
@@ -509,12 +597,13 @@ private fun PhoneBatteryStatusIndicator(
     isNightMode: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val palette = LocalRacePalette.current
     val isLow = battery.levelPercent <= 20 && !battery.isCharging
     val tintColor = when {
         isNightMode -> MaterialTheme.colorScheme.primary
-        battery.isCharging || battery.levelPercent >= 50 -> TrailSage
-        isLow -> FaultCrimson
-        else -> CautionYellow
+        battery.isCharging || battery.levelPercent >= 50 -> palette.zone2
+        isLow -> palette.zone5
+        else -> palette.zone3
     }
     val icon = when {
         battery.isCharging -> Icons.Rounded.BatteryChargingFull

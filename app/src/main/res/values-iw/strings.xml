@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">Wrangler OBD</string>
+    <string name="nav_cockpit">תא נהג</string>
+    <string name="nav_race">מרוץ</string>
+    <string name="nav_diagnostics">סריקת PID</string>
+    <string name="nav_scanner">קודי תקלה</string>
+    <string name="nav_terminal">מסוף</string>
+    <string name="nav_garage">מוסך</string>
+    <string name="status_disconnected">אין חיבור ECU</string>
+    <string name="status_connecting">מתחבר ל-ELM327…</string>
+    <string name="status_connected">ECU מחובר</string>
+    <string name="action_connect_adapter">חבר OBD-II</string>
+    <string name="action_disconnect">נתק</string>
+    <string name="action_zero_inclinometer">אפס שיפוע</string>
+    <string name="action_read_dtcs">סרוק תקלות</string>
+    <string name="action_clear_dtcs">נקה תקלות</string>
+    <string name="action_save_snapshot">שמור צילום</string>
+    <string name="race_mode_day">יום</string>
+    <string name="race_mode_dark">לילה</string>
+    <string name="race_layout_lock">נעל</string>
+    <string name="race_layout_unlock">שחרר</string>
+    <string name="race_layout_reset">איפוס</string>
+    <string name="race_hint_locked">נעול • החלק לגלילה למטה או למעלה</string>
+    <string name="race_hint_unlocked">גרור חלון להזזה • פינה ↘ לשינוי גודל</string>
+    <string name="cd_hero_banner">ג\'יפ רנגלר JK על רכס הרים בשעת דמדומים</string>
+    <string name="cd_connect_bluetooth">חבר מתאם בלוטות\' OBD-II</string>
+    <string name="cd_clear_codes">נקה קודי תקלה</string>
+    <string name="cd_send_command">שלח פקודת OBD-II</string>
+</resources>

@@ -36,12 +36,14 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ChakraPetchFontFamily
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalRacePalette
@@ -59,6 +61,7 @@ fun RaceShiftLightBar(
     modifier: Modifier = Modifier
 ) {
     val palette = LocalRacePalette.current
+    val strings = LocalAppStrings.current
     val startRpm = (rpmRedline * 0.25f).coerceAtLeast(1000f)
     val shiftTriggerRpm = rpmRedline * 0.90f
     val isShiftAlert = rpm != null && rpm.toFloat() >= shiftTriggerRpm
@@ -108,7 +111,7 @@ fun RaceShiftLightBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "SHIFT LIGHTS",
+                    text = strings.shiftLightsTitle,
                     fontFamily = ChakraPetchFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
@@ -133,9 +136,9 @@ fun RaceShiftLightBar(
                 ) {
                     Text(
                         text = when {
-                            isShiftAlert -> "SHIFT NOW"
-                            rpm != null -> "TRACK ACTIVE"
-                            else -> "STANDBY"
+                            isShiftAlert -> strings.redlineBadge
+                            rpm != null -> strings.liveBadge
+                            else -> strings.idleBadge
                         },
                         fontFamily = JetBrainsMonoFontFamily,
                         fontWeight = FontWeight.Bold,
@@ -160,6 +163,7 @@ fun RaceShiftLightBar(
                 val ledWidth = ((size.width - gap * (ledCount - 1)) / ledCount).coerceAtLeast(4f)
                 val ledHeight = size.height.coerceAtLeast(8f)
                 val activeLeds = (animatedRatio * ledCount).roundToInt()
+                val isLightDay = palette.boardBg.luminance() > 0.4f
 
                 for (i in 0 until ledCount) {
                     val baseColor = when {
@@ -171,7 +175,8 @@ fun RaceShiftLightBar(
                     val lit = isShiftAlert || i < activeLeds
                     val alpha = when {
                         isShiftAlert -> flashPhase
-                        lit -> 0.96f
+                        lit -> 0.98f
+                        isLightDay -> 0.32f
                         else -> 0.16f
                     }
                     val x = i * (ledWidth + gap)
@@ -196,9 +201,9 @@ fun RaceShiftLightBar(
 }
 
 /**
- * Hero Motorsport Speedometer & Digital RPM Core rendered via Compose Canvas.
+ * Hero Motorsport Speedometer rendered via Compose Canvas.
  * Analog dial, colored speed powerband zones, and needle display Vehicle Speed (KPH);
- * center digital readout displays live Engine RPM.
+ * center digital readout displays live calibrated OBD-II speed in KPH.
  */
 @Composable
 fun RaceSpeedometerDial(
@@ -208,11 +213,10 @@ fun RaceSpeedometerDial(
     maxSpeedScale: Float,
     speedWarningThreshold: Float,
     majorTickCount: Int,
-    rpmText: String,
-    isRedline: Boolean,
     modifier: Modifier = Modifier
 ) {
     val palette = LocalRacePalette.current
+    val strings = LocalAppStrings.current
     val fractionTarget = if (speedValue != null && maxSpeedScale > 0f) {
         (speedValue / maxSpeedScale).coerceIn(0f, 1f)
     } else {
@@ -246,7 +250,7 @@ fun RaceSpeedometerDial(
         color = palette.surface,
         border = BorderStroke(
             width = 1.4.dp,
-            color = if (isSpeedAlert || isRedline) palette.zone5 else palette.bezelBorder
+            color = if (isSpeedAlert) palette.zone5 else palette.bezelBorder
         )
     ) {
         Column(
@@ -261,7 +265,7 @@ fun RaceSpeedometerDial(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "SPEED $speedUnit",
+                    text = strings.obdSpeedLabel,
                     fontFamily = ChakraPetchFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
@@ -269,10 +273,10 @@ fun RaceSpeedometerDial(
                     color = palette.zone1
                 )
                 Text(
-                    text = "$speedDisplayText $speedUnit",
+                    text = if (speedValue != null) strings.liveSpeedFormat else speedUnit,
                     fontFamily = JetBrainsMonoFontFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     color = if (isSpeedAlert) palette.zone5 else palette.zone3
                 )
             }
@@ -287,8 +291,8 @@ fun RaceSpeedometerDial(
             ) {
                 val minSideDp = minOf(maxWidth.value, maxHeight.value)
                 val tickFontSp = (minSideDp * 0.056f).coerceIn(8f, 13f).sp
-                val rpmFontSp = (minSideDp * 0.115f).coerceIn(13f, 26f).sp
-                val unitFontSp = (minSideDp * 0.048f).coerceIn(8f, 11f).sp
+                val speedFontSp = (minSideDp * 0.135f).coerceIn(14f, 28f).sp
+                val unitFontSp = (minSideDp * 0.052f).coerceIn(8f, 12f).sp
 
                 val scaleTextStyle = TextStyle(
                     fontFamily = ChakraPetchFontFamily,
@@ -312,17 +316,18 @@ fun RaceSpeedometerDial(
                         center = center
                     )
 
+                    val isLightDay = palette.boardBg.luminance() > 0.4f
                     drawCircle(
                         brush = Brush.sweepGradient(
-                            0.0f to palette.zone1.copy(alpha = 0.55f),
+                            0.0f to palette.zone1.copy(alpha = if (isLightDay) 0.85f else 0.55f),
                             0.35f to palette.bezelBorder,
-                            0.65f to palette.zone5.copy(alpha = 0.65f),
-                            1.0f to palette.zone1.copy(alpha = 0.55f),
+                            0.65f to palette.zone5.copy(alpha = if (isLightDay) 0.85f else 0.65f),
+                            1.0f to palette.zone1.copy(alpha = if (isLightDay) 0.85f else 0.55f),
                             center = center
                         ),
                         radius = outerRadius,
                         center = center,
-                        style = Stroke(width = 2.4.dp.toPx())
+                        style = Stroke(width = if (isLightDay) 3.dp.toPx() else 2.4.dp.toPx())
                     )
 
                     val startAngle = 135f
@@ -344,8 +349,14 @@ fun RaceSpeedometerDial(
                         val zStart = bounds.first.coerceIn(0f, 1f)
                         val zEnd = bounds.second.coerceIn(zStart, 1f)
                         if (zEnd > zStart) {
+                            val trackAlpha = when {
+                                isLightDay && zStart >= warnFraction -> 0.48f
+                                isLightDay -> 0.32f
+                                zStart >= warnFraction -> 0.34f
+                                else -> 0.18f
+                            }
                             drawArc(
-                                color = zoneColor.copy(alpha = if (zStart >= warnFraction) 0.34f else 0.18f),
+                                color = zoneColor.copy(alpha = trackAlpha),
                                 startAngle = startAngle + sweepTotal * zStart,
                                 sweepAngle = sweepTotal * (zEnd - zStart),
                                 useCenter = false,
@@ -464,19 +475,23 @@ fun RaceSpeedometerDial(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = rpmText,
+                        text = speedDisplayText,
                         fontFamily = ChakraPetchFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = rpmFontSp,
-                        lineHeight = rpmFontSp * 1.05f,
-                        color = if (isRedline) palette.zone5 else palette.textPrimary
+                        fontSize = speedFontSp,
+                        lineHeight = speedFontSp * 1.05f,
+                        color = when {
+                            speedValue == null -> palette.textSecondary
+                            isSpeedAlert -> palette.zone5
+                            else -> palette.textPrimary
+                        }
                     )
                     Text(
-                        text = "RPM",
+                        text = speedUnit,
                         fontFamily = JetBrainsMonoFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = unitFontSp,
-                        color = if (isRedline) palette.zone5 else palette.zone4
+                        color = if (isSpeedAlert) palette.zone5 else palette.zone1
                     )
                 }
             }
@@ -557,6 +572,7 @@ fun RaceSegmentedBarGauge(
                     val gap = 3.dp.toPx()
                     val segHeight = ((size.height - gap * (segments - 1)) / segments).coerceAtLeast(2f)
                     val activeCount = (animatedFraction * segments).roundToInt()
+                    val isLightDay = palette.boardBg.luminance() > 0.4f
 
                     for (idxFromBottom in 0 until segments) {
                         val segColor = if (isCoolantMode) {
@@ -574,9 +590,14 @@ fun RaceSegmentedBarGauge(
                             }
                         }
                         val lit = fraction != null && idxFromBottom < activeCount
+                        val alpha = when {
+                            lit -> 0.98f
+                            isLightDay -> 0.30f
+                            else -> 0.16f
+                        }
                         val y = size.height - ((idxFromBottom + 1) * segHeight + idxFromBottom * gap)
                         drawRoundRect(
-                            color = segColor.copy(alpha = if (lit) 0.95f else 0.16f),
+                            color = segColor.copy(alpha = alpha),
                             topLeft = Offset(0f, y),
                             size = Size(size.width, segHeight),
                             cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())

@@ -8,9 +8,12 @@ import com.example.data.JkObdDatabase
 import com.example.data.RigPreferencesRepository
 import com.example.data.ScanHistoryRepository
 import com.example.data.ScanRecordEntity
+import com.example.obd.AppLanguage
 import com.example.obd.AppVisualTheme
 import com.example.obd.BluetoothDeviceItem
 import com.example.obd.ConnectionStatus
+import com.example.obd.DiagnosticReading
+import com.example.obd.DiagnosticTestId
 import com.example.obd.DtcCodeInfo
 import com.example.obd.JkDiagnosticLibrary
 import com.example.obd.JkEngineProfile
@@ -69,6 +72,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     val sensorState: StateFlow<TrailSensorState> = sensorManager.sensorState
     val phoneBatteryState: StateFlow<PhoneBatteryState> = batteryMonitor.batteryState
     val gpsState: StateFlow<GpsTelemetryState> = gpsSpeedManager.gpsState
+    val appliedDiagnosticTests: StateFlow<Set<DiagnosticTestId>> = bluetoothManager.appliedDiagnosticTests
+    val diagnosticReadings: StateFlow<Map<DiagnosticTestId, DiagnosticReading>> = bluetoothManager.diagnosticReadings
+    val isDiagnosticScanPaused: StateFlow<Boolean> = bluetoothManager.isDiagnosticScanPaused
+    val diagnosticCycleCount: StateFlow<Long> = bluetoothManager.diagnosticCycleCount
 
     val rigPreferences: StateFlow<RigPreferences> = rigPrefsRepo.preferencesFlow
         .stateIn(
@@ -76,6 +83,21 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = RigPreferences()
         )
+
+    init {
+        viewModelScope.launch {
+            rigPrefsRepo.preferencesFlow.collect { prefs ->
+                bluetoothManager.updateDiagnosticSettings(
+                    speedFactor = prefs.speedCalibrationFactor,
+                    coolantWarnC = prefs.coolantWarnCelsius
+                )
+                val decoded = DiagnosticTestId.decodeSet(prefs.selectedDiagnosticTestsCsv)
+                if (bluetoothManager.appliedDiagnosticTests.value != decoded) {
+                    bluetoothManager.setAppliedDiagnosticTests(decoded, forceReprobe = false)
+                }
+            }
+        }
+    }
 
     private val minuteTicker = flow {
         while (true) {
@@ -165,7 +187,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         if (granted && startCalibrationAfterGrant) {
             gpsSpeedManager.startCalibrationUpdates()
         } else if (!granted) {
-            _uiFeedbackMessage.value = "Fine location permission is needed for live GPS speed calibration."
+            _uiFeedbackMessage.value = msg(
+                en = "Fine location permission is needed for live GPS speed calibration.",
+                he = "נדרשת הרשאת מיקום מדויק לכיול מהירות GPS בזמן אמת."
+            )
         }
     }
 
@@ -177,11 +202,17 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         val gpsKph = gpsState.value.gpsSpeedKph
         val obdKph = telemetry.value.speedKmh
         if (gpsKph == null || gpsKph < 10f) {
-            _uiFeedbackMessage.value = "Drive at least 10 KPH with active GPS lock to calculate offset."
+            _uiFeedbackMessage.value = msg(
+                en = "Drive at least 10 KPH with active GPS lock to calculate offset.",
+                he = "יש לנסוע לפחות 10 קמ\"ש עם קליטת GPS פעילה לחישוב הסטייה."
+            )
             return
         }
         if (obdKph == null || obdKph < 10) {
-            _uiFeedbackMessage.value = "Connect OBD-II and drive at least 10 KPH to match ECU speed."
+            _uiFeedbackMessage.value = msg(
+                en = "Connect OBD-II and drive at least 10 KPH to match ECU speed.",
+                he = "חבר מתאם OBD-II וסע לפחות 10 קמ\"ש להשוואת מהירות המחשב."
+            )
             return
         }
         val factor = (gpsKph / obdKph.toFloat()).coerceIn(0.70f, 1.45f)
@@ -190,7 +221,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
             val pct = (factor - 1f) * 100f
             _uiFeedbackMessage.value = String.format(
                 Locale.US,
-                "GPS calibration applied: ×%.3f (%+.1f%%)",
+                msg(
+                    en = "GPS calibration applied: ×%.3f (%+.1f%%)",
+                    he = "כיול GPS הוחל: ×%.3f (%+.1f%%)"
+                ),
                 factor,
                 pct
             )
@@ -200,7 +234,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     fun applyTireRatioCalibration(stockTireInches: Float) {
         val actualInches = parseTireSizeInches(rigPreferences.value.tireSizeInches)
         if (actualInches == null || stockTireInches <= 0f) {
-            _uiFeedbackMessage.value = "Enter a valid tire diameter (e.g. 35\") in Rig Profile."
+            _uiFeedbackMessage.value = msg(
+                en = "Enter a valid tire diameter (e.g. 35\") in Rig Profile.",
+                he = "הזן קוטר צמיג תקין (למשל 35\") בפרופיל הרכב."
+            )
             return
         }
         val factor = (actualInches / stockTireInches).coerceIn(0.70f, 1.45f)
@@ -209,7 +246,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
             val pct = (factor - 1f) * 100f
             _uiFeedbackMessage.value = String.format(
                 Locale.US,
-                "Tire-size offset applied: ×%.3f (%+.1f%%)",
+                msg(
+                    en = "Tire-size offset applied: ×%.3f (%+.1f%%)",
+                    he = "יחס קוטר צמיג הוחל: ×%.3f (%+.1f%%)"
+                ),
                 factor,
                 pct
             )
@@ -249,7 +289,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
 
     fun readDtcsFromEcu() {
         if (connectionStatus.value != ConnectionStatus.CONNECTED) {
-            _uiFeedbackMessage.value = "Connect an ELM327 adapter to scan live ECU codes."
+            _uiFeedbackMessage.value = msg(
+                en = "Connect an ELM327 adapter to scan live ECU codes.",
+                he = "חבר מתאם ELM327 לסריקת קודי תקלה מהמחשב."
+            )
             return
         }
         bluetoothManager.readDtcs()
@@ -257,11 +300,17 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
 
     fun clearDtcsOnEcu() {
         if (connectionStatus.value != ConnectionStatus.CONNECTED) {
-            _uiFeedbackMessage.value = "Connect an ELM327 adapter to clear ECU codes."
+            _uiFeedbackMessage.value = msg(
+                en = "Connect an ELM327 adapter to clear ECU codes.",
+                he = "חבר מתאם ELM327 לניקוי קודי תקלה."
+            )
             return
         }
         bluetoothManager.clearDtcs()
-        _uiFeedbackMessage.value = "Mode 04 Clear DTC command sent to Wrangler JK ECU."
+        _uiFeedbackMessage.value = msg(
+            en = "Mode 04 Clear DTC command sent to Wrangler JK ECU.",
+            he = "פקודת ניקוי Mode 04 נשלחה למחשב הרכב."
+        )
     }
 
     fun saveScanSnapshot(note: String = "") {
@@ -286,7 +335,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
                     notes = note.trim()
                 )
             )
-            _uiFeedbackMessage.value = "Diagnostic snapshot saved to Garage log."
+            _uiFeedbackMessage.value = msg(
+                en = "Diagnostic snapshot saved to Garage log.",
+                he = "צילום מצב האבחון נשמר ביומן המוסך."
+            )
         }
     }
 
@@ -310,7 +362,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         val current = sensorState.value
         viewModelScope.launch {
             rigPrefsRepo.setInclinometerTare(current.pitchDegrees, current.rollDegrees)
-            _uiFeedbackMessage.value = "Inclinometer zeroed to current rig mount angle."
+            _uiFeedbackMessage.value = msg(
+                en = "Inclinometer zeroed to current rig mount angle.",
+                he = "מד השיפוע אופס לזווית ההתקנה הנוכחית."
+            )
         }
     }
 
@@ -323,7 +378,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     fun updateRigDetails(nickname: String, tireSize: String, axleRatio: String) {
         viewModelScope.launch {
             rigPrefsRepo.updateRigDetails(nickname, tireSize, axleRatio)
-            _uiFeedbackMessage.value = "Wrangler JK rig profile updated."
+            _uiFeedbackMessage.value = msg(
+                en = "Wrangler JK rig profile updated.",
+                he = "פרופיל הרכב עודכן."
+            )
         }
     }
 
@@ -361,8 +419,8 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
                 val targetDarkTheme = prefs.lastDarkTheme.takeIf { it != AppVisualTheme.CLASSIC_WHITE }
                     ?: AppVisualTheme.NEON_CYAN_AMBER
                 rigPrefsRepo.setVisualTheme(targetDarkTheme)
-                if (prefs.nightModeSetting == NightModeSetting.MANUAL_OFF) {
-                    rigPrefsRepo.setNightModeSetting(NightModeSetting.AUTO_SUN)
+                if (prefs.nightModeSetting == NightModeSetting.MANUAL_ON) {
+                    rigPrefsRepo.setNightModeSetting(NightModeSetting.MANUAL_OFF)
                 }
             }
         }
@@ -389,7 +447,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     fun resetRaceLayout() {
         viewModelScope.launch {
             rigPrefsRepo.setRaceLayoutSpec("")
-            _uiFeedbackMessage.value = "Race gauge layout reset to default."
+            _uiFeedbackMessage.value = msg(
+                en = "Race gauge layout reset to default.",
+                he = "פריסת שעוני המרוץ אופסה לברירת המחדל."
+            )
         }
     }
 
@@ -399,8 +460,53 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun setAppLanguage(language: AppLanguage) {
+        viewModelScope.launch {
+            rigPrefsRepo.setAppLanguage(language)
+            _uiFeedbackMessage.value = if (language == AppLanguage.HEBREW) {
+                "שפת האפליקציה שונתה לעברית"
+            } else {
+                "App language set to English"
+            }
+        }
+    }
+
+    fun applyDiagnosticTests(selected: Set<DiagnosticTestId>) {
+        val csv = DiagnosticTestId.encodeSet(selected)
+        bluetoothManager.setAppliedDiagnosticTests(selected, forceReprobe = true)
+        viewModelScope.launch {
+            rigPrefsRepo.setSelectedDiagnosticTests(csv)
+            if (selected.isNotEmpty()) {
+                _uiFeedbackMessage.value = msg(
+                    en = "Applied ${selected.size} OBD diagnostic tests for real-time scan.",
+                    he = "הוחלו ${selected.size} בדיקות OBD לסריקה בזמן אמת."
+                )
+            }
+        }
+    }
+
+    fun setDiagnosticScreenVisible(visible: Boolean) {
+        bluetoothManager.setDiagnosticScreenActive(visible)
+    }
+
+    fun toggleDiagnosticScanPaused() {
+        bluetoothManager.toggleDiagnosticScanPaused()
+    }
+
+    fun reprobeUnsupportedDiagnostics() {
+        bluetoothManager.reprobeUnsupportedDiagnostics()
+        _uiFeedbackMessage.value = msg(
+            en = "Re-probing ECU for previously unsupported PIDs…",
+            he = "סורק מחדש חיישנים שלא זוהו מול מחשב הרכב…"
+        )
+    }
+
     fun consumeFeedbackMessage() {
         _uiFeedbackMessage.value = null
+    }
+
+    private fun msg(en: String, he: String): String {
+        return if (rigPreferences.value.appLanguage == AppLanguage.HEBREW) he else en
     }
 
     override fun onCleared() {

@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.obd.BluetoothDeviceItem
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.TrailSage
 
@@ -62,6 +63,7 @@ fun BluetoothConnectSheet(
     onSelectDevice: (BluetoothDeviceItem) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
 
@@ -103,12 +105,12 @@ fun BluetoothConnectSheet(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Pair ELM327 / OBD-II Adapter",
+                        text = strings.btSheetTitle,
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Supports Bluetooth Classic SPP & BLE (OBDLink, Veepeak, Vgate)",
+                        text = strings.btSheetSubtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -122,7 +124,7 @@ fun BluetoothConnectSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
-                        contentDescription = "Close Bluetooth dialog"
+                        contentDescription = strings.cancel
                     )
                 }
             }
@@ -137,13 +139,13 @@ fun BluetoothConnectSheet(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Bluetooth Permissions Required",
+                            text = strings.btPermRequiredTitle,
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Grant BLUETOOTH_CONNECT and BLUETOOTH_SCAN so Wrangler OBD can discover and link to your ELM327 adapter.",
+                            text = strings.btPermRequiredBody,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -158,7 +160,7 @@ fun BluetoothConnectSheet(
                                     .weight(1f)
                                     .testTag("grant_bluetooth_permission_button")
                             ) {
-                                Text("Grant Access")
+                                Text(strings.grantAccess)
                             }
                             OutlinedButton(
                                 onClick = {
@@ -168,7 +170,7 @@ fun BluetoothConnectSheet(
                                     context.startActivity(intent)
                                 }
                             ) {
-                                Text("Settings")
+                                Text(strings.settingsButton)
                             }
                         }
                     }
@@ -194,7 +196,7 @@ fun BluetoothConnectSheet(
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Scanning… Tap to Stop")
+                            Text(strings.btScanningStop)
                         } else {
                             Icon(
                                 imageVector = Icons.Rounded.BluetoothSearching,
@@ -202,19 +204,19 @@ fun BluetoothConnectSheet(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Scan Nearby Adapters")
+                            Text(strings.btScanNearby)
                         }
                     }
 
                     OutlinedButton(onClick = onRefreshPaired) {
-                        Text("Paired")
+                        Text(strings.btPairedButton)
                     }
                 }
 
                 if (!isBluetoothEnabled) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "Bluetooth appears disabled in system settings. Enable Bluetooth to connect.",
+                        text = strings.btDisabledWarning,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -240,13 +242,13 @@ fun BluetoothConnectSheet(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "No OBD-II adapters found yet",
+                                text = strings.btNoAdaptersTitle,
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Plug your ELM327 dongle into the JK OBD-II port under the driver dash, turn ignition to RUN, and tap Scan.",
+                                text = strings.btNoAdaptersBody,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

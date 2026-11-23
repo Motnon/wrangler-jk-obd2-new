@@ -12,14 +12,51 @@ object Elm327Protocol {
         data class CoolantTemp(val celsius: Int) : DecodedPid()
         data class IntakeAirTemp(val celsius: Int) : DecodedPid()
         data class AmbientAirTemp(val celsius: Int) : DecodedPid()
+        data class CatalystTempB1(val celsius: Float) : DecodedPid()
+        data class CatalystTempB2(val celsius: Float) : DecodedPid()
+        data class BarometricPressure(val kpa: Int) : DecodedPid()
         data class ThrottlePosition(val percent: Float) : DecodedPid()
+        data class RelativeThrottlePosition(val percent: Float) : DecodedPid()
+        data class AbsoluteThrottleB(val percent: Float) : DecodedPid()
+        data class AbsoluteThrottleD(val percent: Float) : DecodedPid()
+        data class AbsoluteThrottleE(val percent: Float) : DecodedPid()
+        data class CommandedThrottleActuator(val percent: Float) : DecodedPid()
         data class EngineLoad(val percent: Float) : DecodedPid()
+        data class AbsoluteLoad(val percent: Float) : DecodedPid()
         data class ManifoldPressure(val kpa: Int) : DecodedPid()
         data class ShortTermFuelTrim(val percent: Float) : DecodedPid()
         data class LongTermFuelTrim(val percent: Float) : DecodedPid()
+        data class ShortTermFuelTrimB2(val percent: Float) : DecodedPid()
+        data class LongTermFuelTrimB2(val percent: Float) : DecodedPid()
+        data class FuelAirEquivRatio(val lambda: Float) : DecodedPid()
         data class FuelLevel(val percent: Float) : DecodedPid()
+        data class OxygenSensorReading(
+            val pid: Int,
+            val voltage: Float,
+            val stftPercent: Float?
+        ) : DecodedPid()
+        data class TimingAdvance(val degrees: Float) : DecodedPid()
+        data class CommandedEgr(val percent: Float) : DecodedPid()
+        data class EgrError(val percent: Float) : DecodedPid()
+        data class CommandedEvapPurge(val percent: Float) : DecodedPid()
         data class ControlModuleVoltage(val volts: Float) : DecodedPid()
+        data class RunTimeSinceStart(val seconds: Int) : DecodedPid()
+        data class DistanceSinceCleared(val km: Int) : DecodedPid()
+        data class DistanceWithMil(val km: Int) : DecodedPid()
+        data class WarmUpsSinceCleared(val count: Int) : DecodedPid()
         data class MonitorStatus(val milOn: Boolean, val dtcCount: Int) : DecodedPid()
+    }
+
+    data class Mode06MisfireResult(
+        val cylinder: Int,
+        val midHex: Int,
+        val currentCycleCount: Int?,
+        val ewmaCount: Int?,
+        val fallbackCount: Int?,
+        val maxLimit: Int?
+    ) {
+        val displayCount: Int?
+            get() = currentCycleCount ?: ewmaCount ?: fallbackCount
     }
 
     fun sanitizeResponse(raw: String): String {
@@ -42,6 +79,31 @@ object Elm327Protocol {
             upper.contains("CAN ERROR") ||
             upper.contains("?") ||
             upper.contains("STOPPED")
+    }
+
+    private fun isLineNegativeResponse(bytes: List<Int>): Boolean {
+        if (bytes.size >= 3 && bytes[0] == 0x7F) return true
+        // ISO-TP single-frame with PCI length byte (1..7): e.g. 03 7F 01 12
+        if (bytes.size >= 4 && bytes[0] in 1..7 && bytes[1] == 0x7F) return true
+        return false
+    }
+
+    fun isNegativeResponse(raw: String): Boolean {
+        val lines = sanitizeResponse(raw)
+            .replace(Regex("""\b\d+:"""), "\n")
+            .lines()
+        var sawNegative = false
+        var sawPositive = false
+        for (line in lines) {
+            val bytes = extractHexBytes(line.replace(Regex("""^\d+:"""), "").trim())
+            if (bytes.isEmpty()) continue
+            if (isLineNegativeResponse(bytes)) {
+                sawNegative = true
+            } else if (findHeaderIndex(bytes, 0x41) >= 0 || findHeaderIndex(bytes, 0x46) >= 0) {
+                sawPositive = true
+            }
+        }
+        return sawNegative && !sawPositive
     }
 
     fun parseVoltageResponse(raw: String): Float? {
@@ -79,7 +141,7 @@ object Elm327Protocol {
         for (line in lines) {
             val normalizedLine = line.replace(Regex("""^\d+:"""), "").trim()
             val bytes = extractHexBytes(normalizedLine)
-            if (bytes.size < 3) continue
+            if (bytes.size < 3 || isLineNegativeResponse(bytes)) continue
             val idx = if (expectedPid != null) {
                 findHeaderWithPid(bytes, 0x41, expectedPid)
             } else {
@@ -107,6 +169,12 @@ object Elm327Protocol {
                 0x07 -> if (data.isNotEmpty()) {
                     DecodedPid.LongTermFuelTrim(((data[0] - 128) * 100f) / 128f)
                 } else null
+                0x08 -> if (data.isNotEmpty()) {
+                    DecodedPid.ShortTermFuelTrimB2(((data[0] - 128) * 100f) / 128f)
+                } else null
+                0x09 -> if (data.isNotEmpty()) {
+                    DecodedPid.LongTermFuelTrimB2(((data[0] - 128) * 100f) / 128f)
+                } else null
                 0x0B -> if (data.isNotEmpty()) {
                     DecodedPid.ManifoldPressure(data[0])
                 } else null
@@ -116,26 +184,157 @@ object Elm327Protocol {
                 0x0D -> if (data.isNotEmpty()) {
                     DecodedPid.Speed(data[0])
                 } else null
+                0x0E -> if (data.isNotEmpty()) {
+                    DecodedPid.TimingAdvance((data[0] / 2f) - 64f)
+                } else null
                 0x0F -> if (data.isNotEmpty()) {
                     DecodedPid.IntakeAirTemp(data[0] - 40)
                 } else null
                 0x11 -> if (data.isNotEmpty()) {
                     DecodedPid.ThrottlePosition((data[0] * 100f) / 255f)
                 } else null
+                0x14, 0x15, 0x16, 0x17, 0x18, 0x19 -> if (data.size >= 2) {
+                    val voltage = data[0] / 200f
+                    val stft = if (data[1] == 0xFF) null else ((data[1] - 128) * 100f) / 128f
+                    DecodedPid.OxygenSensorReading(pid = pid, voltage = voltage, stftPercent = stft)
+                } else null
+                0x1F -> if (data.size >= 2) {
+                    DecodedPid.RunTimeSinceStart((data[0] * 256) + data[1])
+                } else null
+                0x21 -> if (data.size >= 2) {
+                    DecodedPid.DistanceWithMil((data[0] * 256) + data[1])
+                } else null
+                0x2C -> if (data.isNotEmpty()) {
+                    DecodedPid.CommandedEgr((data[0] * 100f) / 255f)
+                } else null
+                0x2D -> if (data.isNotEmpty()) {
+                    DecodedPid.EgrError(((data[0] - 128) * 100f) / 128f)
+                } else null
+                0x2E -> if (data.isNotEmpty()) {
+                    DecodedPid.CommandedEvapPurge((data[0] * 100f) / 255f)
+                } else null
                 0x2F -> if (data.isNotEmpty()) {
                     DecodedPid.FuelLevel((data[0] * 100f) / 255f)
+                } else null
+                0x30 -> if (data.isNotEmpty()) {
+                    DecodedPid.WarmUpsSinceCleared(data[0])
+                } else null
+                0x31 -> if (data.size >= 2) {
+                    DecodedPid.DistanceSinceCleared((data[0] * 256) + data[1])
+                } else null
+                0x33 -> if (data.isNotEmpty()) {
+                    DecodedPid.BarometricPressure(data[0])
+                } else null
+                0x3C -> if (data.size >= 2) {
+                    DecodedPid.CatalystTempB1((((data[0] * 256) + data[1]) / 10f) - 40f)
+                } else null
+                0x3D -> if (data.size >= 2) {
+                    DecodedPid.CatalystTempB2((((data[0] * 256) + data[1]) / 10f) - 40f)
                 } else null
                 0x42 -> if (data.size >= 2) {
                     DecodedPid.ControlModuleVoltage(((data[0] * 256) + data[1]) / 1000f)
                 } else null
+                0x43 -> if (data.size >= 2) {
+                    DecodedPid.AbsoluteLoad((((data[0] * 256) + data[1]) * 100f) / 255f)
+                } else null
+                0x44 -> if (data.size >= 2) {
+                    DecodedPid.FuelAirEquivRatio(((data[0] * 256) + data[1]) * (2f / 65536f))
+                } else null
+                0x45 -> if (data.isNotEmpty()) {
+                    DecodedPid.RelativeThrottlePosition((data[0] * 100f) / 255f)
+                } else null
                 0x46 -> if (data.isNotEmpty()) {
                     DecodedPid.AmbientAirTemp(data[0] - 40)
+                } else null
+                0x47 -> if (data.isNotEmpty()) {
+                    DecodedPid.AbsoluteThrottleB((data[0] * 100f) / 255f)
+                } else null
+                0x49 -> if (data.isNotEmpty()) {
+                    DecodedPid.AbsoluteThrottleD((data[0] * 100f) / 255f)
+                } else null
+                0x4A -> if (data.isNotEmpty()) {
+                    DecodedPid.AbsoluteThrottleE((data[0] * 100f) / 255f)
+                } else null
+                0x4C -> if (data.isNotEmpty()) {
+                    DecodedPid.CommandedThrottleActuator((data[0] * 100f) / 255f)
                 } else null
                 else -> null
             }
             if (decoded != null) return decoded
         }
         return null
+    }
+
+    /**
+     * Decodes SAE J1979 CAN Mode 06 Monitor Test Results for Cylinder Misfires (MID 0xA2..0xA7).
+     * Handles single-frame and ISO-TP multi-frame responses (e.g., "014\n0:46A2...\n1:...").
+     */
+    fun decodeMode06Misfire(raw: String, expectedMid: Int): Mode06MisfireResult? {
+        if (isErrorResponse(raw) || isNegativeResponse(raw)) return null
+        val lines = sanitizeResponse(raw)
+            .replace(Regex("""\b\d+:"""), "\n")
+            .lines()
+
+        val allBytes = mutableListOf<Int>()
+        for (line in lines) {
+            val trimmed = line.replace(Regex("""^\d+:"""), "").trim()
+            if (trimmed.isEmpty()) continue
+            // Skip ISO-TP length header line like "014" or "00E"
+            if (Regex("""^[0-9A-Fa-f]{3}$""").matches(trimmed)) continue
+            val bytes = extractHexBytes(trimmed)
+            if (bytes.isNotEmpty()) {
+                allBytes.addAll(bytes)
+            }
+        }
+        if (allBytes.size < 10) return null
+
+        val headerIdx = findHeaderPair(allBytes, 0x46, expectedMid)
+        if (headerIdx < 0) return null
+
+        val payload = allBytes.drop(headerIdx + 1)
+        var currentCycle: Int? = null
+        var ewma: Int? = null
+        var fallback: Int? = null
+        var maxLimit: Int? = null
+
+        var offset = 0
+        while (offset + 9 <= payload.size) {
+            val mid = payload[offset]
+            val tid = payload[offset + 1]
+            // payload[offset + 2] is UASID (typically 0x24 = unsigned counts)
+            val valRaw = (payload[offset + 3] shl 8) or payload[offset + 4]
+            val maxRaw = (payload[offset + 7] shl 8) or payload[offset + 8]
+            offset += 9
+
+            if (mid == expectedMid) {
+                when (tid) {
+                    0x0C -> {
+                        currentCycle = valRaw
+                        maxLimit = maxRaw
+                    }
+                    0x0B -> {
+                        ewma = valRaw
+                        if (maxLimit == null) maxLimit = maxRaw
+                    }
+                    else -> {
+                        if (fallback == null) {
+                            fallback = valRaw
+                            if (maxLimit == null) maxLimit = maxRaw
+                        }
+                    }
+                }
+            }
+        }
+
+        if (currentCycle == null && ewma == null && fallback == null) return null
+        return Mode06MisfireResult(
+            cylinder = (expectedMid - 0xA1).coerceIn(1, 12),
+            midHex = expectedMid,
+            currentCycleCount = currentCycle,
+            ewmaCount = ewma,
+            fallbackCount = fallback,
+            maxLimit = maxLimit
+        )
     }
 
     private fun findHeaderWithPid(bytes: List<Int>, header: Int, pid: Int): Int {

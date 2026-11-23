@@ -2,6 +2,7 @@
     <string name="app_name">Wrangler OBD</string>
     <string name="nav_cockpit">Cockpit</string>
     <string name="nav_race">Race</string>
+    <string name="nav_diagnostics">PID Scan</string>
     <string name="nav_scanner">DTC Scan</string>
     <string name="nav_terminal">Terminal</string>
     <string name="nav_garage">Garage</string>
@@ -14,6 +15,13 @@
     <string name="action_read_dtcs">Scan ECU Codes</string>
     <string name="action_clear_dtcs">Clear MIL / DTCs</string>
     <string name="action_save_snapshot">Save Snapshot</string>
+    <string name="race_mode_day">Day</string>
+    <string name="race_mode_dark">Dark</string>
+    <string name="race_layout_lock">Lock</string>
+    <string name="race_layout_unlock">Unlock</string>
+    <string name="race_layout_reset">Reset</string>
+    <string name="race_hint_locked">LOCKED • SWIPE ANYWHERE TO SCROLL</string>
+    <string name="race_hint_unlocked">DRAG WINDOW TO MOVE • CORNER ↘ TO RESIZE</string>
     <string name="cd_hero_banner">Jeep Wrangler JK parked on mountain ridge at dusk</string>
     <string name="cd_connect_bluetooth">Connect Bluetooth OBD-II adapter</string>
     <string name="cd_clear_codes">Clear trouble codes</string>

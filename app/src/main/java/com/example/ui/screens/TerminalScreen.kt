@@ -55,6 +55,7 @@ import com.example.obd.TerminalDirection
 import com.example.obd.TerminalEntry
 import com.example.obd.UnitSystem
 import com.example.obd.applyCalibratedSpeedKph
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.OverlandAmber
@@ -72,6 +73,7 @@ fun TerminalScreen(
     onOpenBluetoothSheet: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     var commandInput by remember { mutableStateOf("") }
     val presetCommands = remember {
         listOf("ATZ", "ATI", "ATRV", "0100", "0105", "010C", "012F", "0142", "03", "0902")
@@ -95,7 +97,10 @@ fun TerminalScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.Terminal,
                         contentDescription = null,
@@ -104,15 +109,15 @@ fun TerminalScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "ELM327 AT / HEX TERMINAL",
+                            text = strings.terminalHeader,
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = if (connectionStatus == ConnectionStatus.CONNECTED) {
-                                "CAN-Bus ISO 15765-4 link active"
+                                strings.terminalActiveLink
                             } else {
-                                "Offline — Connect ELM327 to transmit commands"
+                                strings.terminalOffline
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -127,7 +132,7 @@ fun TerminalScreen(
                             contentDescription = null,
                             modifier = Modifier.padding(end = 6.dp)
                         )
-                        Text("Pair")
+                        Text(strings.pairShort)
                     }
                 }
             }
@@ -174,7 +179,7 @@ fun TerminalScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "RAW TX / RX STREAM",
+                                text = strings.rawTxRxStream,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -205,7 +210,7 @@ fun TerminalScreen(
                 item {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "WRANGLER JK SUPPORTED PID MONITOR",
+                        text = strings.supportedPidMonitor,
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -221,7 +226,7 @@ fun TerminalScreen(
                     )
                     val unitLabel = when (pid.pidHex) {
                         "0105", "010F", "0146" -> "°C"
-                        "010D" -> "KPH"
+                        "010D" -> strings.speedUnitKph
                         else -> if (isImperial) pid.unitImperial else pid.unitMetric
                     }
 
@@ -290,7 +295,7 @@ fun TerminalScreen(
                 OutlinedTextField(
                     value = commandInput,
                     onValueChange = { commandInput = it.uppercase() },
-                    placeholder = { Text("Enter AT or PID (e.g. 010C)") },
+                    placeholder = { Text(strings.terminalInputPlaceholder) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Characters,

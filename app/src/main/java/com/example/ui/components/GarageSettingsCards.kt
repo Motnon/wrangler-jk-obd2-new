@@ -47,6 +47,7 @@ import com.example.obd.applyCalibratedSpeedKph
 import com.example.obd.parseTireSizeInches
 import com.example.sensors.GpsTelemetryState
 import com.example.sensors.SolarSchedule
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.CautionYellow
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.TrailSage
@@ -69,6 +70,7 @@ fun DisplayAndNightModeCard(
     onLocationPermissionResult: (Boolean, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     var brightnessSlider by remember(rigPrefs.nightBrightnessPercent) {
         mutableIntStateOf(rigPrefs.nightBrightnessPercent)
     }
@@ -79,6 +81,24 @@ fun DisplayAndNightModeCard(
         val granted = results[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             results[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         onLocationPermissionResult(granted, false)
+    }
+
+    val sunriseStr = String.format(
+        Locale.US,
+        "%02d:%02d",
+        solarSchedule.sunriseMinuteOfDay / 60,
+        solarSchedule.sunriseMinuteOfDay % 60
+    )
+    val sunsetStr = String.format(
+        Locale.US,
+        "%02d:%02d",
+        solarSchedule.sunsetMinuteOfDay / 60,
+        solarSchedule.sunsetMinuteOfDay % 60
+    )
+    val solarText = if (solarSchedule.usingLocation) {
+        String.format(Locale.US, strings.solarUsingLocationFormat, sunriseStr, sunsetStr)
+    } else {
+        String.format(Locale.US, strings.solarDefaultSunFormat, sunriseStr, sunsetStr)
     }
 
     Surface(
@@ -99,14 +119,14 @@ fun DisplayAndNightModeCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "VISUAL THEME & NIGHT MODE",
+                    text = strings.visualThemeHeader,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
             Text(
-                text = "Display Color Theme",
+                text = strings.displayColorTheme,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -121,7 +141,7 @@ fun DisplayAndNightModeCard(
                     FilterChip(
                         selected = rigPrefs.visualTheme == theme,
                         onClick = { onSelectVisualTheme(theme) },
-                        label = { Text(theme.label) },
+                        label = { Text(strings.themeLabel(theme)) },
                         modifier = Modifier.testTag("theme_chip_${theme.name.lowercase()}")
                     )
                 }
@@ -141,13 +161,13 @@ fun DisplayAndNightModeCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Night Off-Roading Mode",
+                        text = strings.nightOffRoadMode,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 Text(
-                    text = if (isNightModeActive) "ACTIVE (RED)" else "DAYLIGHT",
+                    text = if (isNightModeActive) strings.nightActiveBadge else strings.daylightBadge,
                     fontFamily = JetBrainsMonoFontFamily,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.labelSmall,
@@ -156,14 +176,16 @@ fun DisplayAndNightModeCard(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 NightModeSetting.entries.forEach { mode ->
                     FilterChip(
                         selected = rigPrefs.nightModeSetting == mode,
                         onClick = { onSelectNightMode(mode) },
-                        label = { Text(mode.label) },
+                        label = { Text(strings.nightModeLabel(mode)) },
                         modifier = Modifier.testTag("night_mode_chip_${mode.name.lowercase()}")
                     )
                 }
@@ -175,7 +197,7 @@ fun DisplayAndNightModeCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = solarSchedule.formattedSummary(),
+                    text = solarText,
                     fontFamily = JetBrainsMonoFontFamily,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -193,7 +215,7 @@ fun DisplayAndNightModeCard(
                         },
                         modifier = Modifier.testTag("night_detect_sun_location_button")
                     ) {
-                        Text("Use GPS Sun")
+                        Text(strings.useGpsSun)
                     }
                 }
             }
@@ -204,7 +226,7 @@ fun DisplayAndNightModeCard(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Night Screen Brightness",
+                        text = strings.nightBrightnessLabel,
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
@@ -244,6 +266,7 @@ fun GpsSpeedCalibrationCard(
     onSetCalibrationFactor: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     val parsedTire = parseTireSizeInches(rigPrefs.tireSizeInches)
     val oversizedDetected = parsedTire != null && parsedTire > (rigPrefs.stockTireInches + 0.5f)
     val theoreticalFactor = if (parsedTire != null && rigPrefs.stockTireInches > 0f) {
@@ -297,7 +320,10 @@ fun GpsSpeedCalibrationCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.GpsFixed,
                         contentDescription = null,
@@ -305,7 +331,7 @@ fun GpsSpeedCalibrationCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "GPS SPEEDOMETER CALIBRATION",
+                        text = strings.gpsCalibrationHeader,
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -320,6 +346,12 @@ fun GpsSpeedCalibrationCard(
             }
 
             if (oversizedDetected) {
+                val estimatedOffsetStr = String.format(
+                    Locale.US,
+                    "%+.1f%% (×%.3f)",
+                    (theoreticalFactor - 1f) * 100f,
+                    theoreticalFactor
+                )
                 Surface(
                     shape = MaterialTheme.shapes.small,
                     color = CautionYellow.copy(alpha = 0.14f),
@@ -338,9 +370,13 @@ fun GpsSpeedCalibrationCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Oversized tires detected (${rigPrefs.tireSizeInches} vs ${rigPrefs.stockTireInches.toInt()}\" stock). Estimated offset: ${
-                                String.format(Locale.US, "%+.1f%% (×%.3f)", (theoreticalFactor - 1f) * 100f, theoreticalFactor)
-                            }.",
+                            text = String.format(
+                                Locale.US,
+                                strings.oversizedTiresWarningFormat,
+                                rigPrefs.tireSizeInches,
+                                rigPrefs.stockTireInches.toInt(),
+                                estimatedOffsetStr
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -359,12 +395,13 @@ fun GpsSpeedCalibrationCard(
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
                         Text(
-                            text = "GPS SPEED",
+                            text = strings.gpsSpeedLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = gpsKph?.let { String.format(Locale.US, "%.1f KPH", it) } ?: "-- KPH",
+                            text = gpsKph?.let { String.format(Locale.US, "%.1f %s", it, strings.speedUnitKph) }
+                                ?: "-- ${strings.speedUnitKph}",
                             fontFamily = JetBrainsMonoFontFamily,
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleSmall,
@@ -379,12 +416,12 @@ fun GpsSpeedCalibrationCard(
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
                         Text(
-                            text = "OBD RAW / CAL",
+                            text = strings.obdRawCalLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "${rawObdKph ?: "--"} / ${calibratedKph ?: "--"} KPH",
+                            text = "${rawObdKph ?: "--"} / ${calibratedKph ?: "--"} ${strings.speedUnitKph}",
                             fontFamily = JetBrainsMonoFontFamily,
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleSmall,
@@ -399,7 +436,7 @@ fun GpsSpeedCalibrationCard(
                     val diffKph = gpsKph!! - rawObdKph!!.toFloat()
                     String.format(
                         Locale.US,
-                        "Live GPS offset: %+.1f KPH • Recommended factor: ×%.3f",
+                        strings.liveGpsOffsetFormat,
                         diffKph,
                         liveCalculatedFactor
                     )
@@ -438,9 +475,9 @@ fun GpsSpeedCalibrationCard(
                 ) {
                     Text(
                         text = when {
-                            !hasFineLocationPermission -> "Enable GPS"
-                            gpsState.isCalibrating -> "Stop GPS"
-                            else -> "Start GPS"
+                            !hasFineLocationPermission -> strings.enableGps
+                            gpsState.isCalibrating -> strings.stopGps
+                            else -> strings.startGps
                         }
                     )
                 }
@@ -452,7 +489,7 @@ fun GpsSpeedCalibrationCard(
                         .weight(1f)
                         .testTag("gps_apply_calibration_button")
                 ) {
-                    Text("Match GPS")
+                    Text(strings.matchGps)
                 }
             }
 
@@ -467,7 +504,7 @@ fun GpsSpeedCalibrationCard(
                             .weight(1f)
                             .testTag("apply_tire_ratio_button")
                     ) {
-                        Text("Use ${rigPrefs.tireSizeInches} Ratio")
+                        Text(String.format(Locale.US, strings.useTireRatioFormat, rigPrefs.tireSizeInches))
                     }
                 }
                 OutlinedButton(
@@ -476,7 +513,7 @@ fun GpsSpeedCalibrationCard(
                         .weight(1f)
                         .testTag("reset_speed_calibration_button")
                 ) {
-                    Text("Reset 1.00×")
+                    Text(strings.resetOneX)
                 }
             }
 
@@ -486,7 +523,7 @@ fun GpsSpeedCalibrationCard(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Manual Speed Multiplier",
+                        text = strings.manualSpeedMultiplier,
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
