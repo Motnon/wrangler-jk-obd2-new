@@ -139,6 +139,7 @@ data class RigPreferences(
     val raceLayoutSpec: String = "",
     val raceLayoutLocked: Boolean = false,
     val visualTheme: AppVisualTheme = AppVisualTheme.NEON_CYAN_AMBER,
+    val lastDarkTheme: AppVisualTheme = AppVisualTheme.NEON_CYAN_AMBER,
     val nightModeSetting: NightModeSetting = NightModeSetting.AUTO_SUN,
     val nightBrightnessPercent: Int = 20,
     val speedCalibrationFactor: Float = 1.0f

@@ -351,6 +351,23 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun setRaceDayMode(enableDayMode: Boolean) {
+        viewModelScope.launch {
+            val prefs = rigPreferences.value
+            if (enableDayMode) {
+                rigPrefsRepo.setNightModeSetting(NightModeSetting.MANUAL_OFF)
+                rigPrefsRepo.setVisualTheme(AppVisualTheme.CLASSIC_WHITE)
+            } else {
+                val targetDarkTheme = prefs.lastDarkTheme.takeIf { it != AppVisualTheme.CLASSIC_WHITE }
+                    ?: AppVisualTheme.NEON_CYAN_AMBER
+                rigPrefsRepo.setVisualTheme(targetDarkTheme)
+                if (prefs.nightModeSetting == NightModeSetting.MANUAL_OFF) {
+                    rigPrefsRepo.setNightModeSetting(NightModeSetting.AUTO_SUN)
+                }
+            }
+        }
+    }
+
     fun setNightModeSetting(setting: NightModeSetting) {
         viewModelScope.launch {
             rigPrefsRepo.setNightModeSetting(setting)

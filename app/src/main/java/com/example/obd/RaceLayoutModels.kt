@@ -121,9 +121,9 @@ object RaceLayoutDefaults {
             xFraction = 0.025f,
             yDp = 768f,
             widthFraction = 0.95f,
-            heightDp = 248f,
+            heightDp = 284f,
             minWidthDp = 200f,
-            minHeightDp = 190f,
+            minHeightDp = 210f,
             maxHeightDp = 420f,
             zOrder = 10
         )

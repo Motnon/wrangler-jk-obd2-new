@@ -19,6 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.RestartAlt
@@ -79,6 +81,8 @@ fun RaceScreen(
     telemetry: LiveTelemetry,
     sensorState: TrailSensorState,
     rigPrefs: RigPreferences,
+    isDayMode: Boolean,
+    onSetRaceDayMode: (Boolean) -> Unit,
     onOpenBluetoothSheet: () -> Unit,
     onDisconnect: () -> Unit,
     onTareInclinometer: () -> Unit,
@@ -136,7 +140,6 @@ fun RaceScreen(
     val speedDisplayText = calibratedSpeedKph?.toString() ?: "--"
     val rpmText = telemetry.rpm?.let { String.format(Locale.US, "%,d", it) } ?: "--"
 
-    // Coolant temperature is always Celsius (°C)
     val coolantDisplayValue: Float? = telemetry.coolantCelsius?.toFloat()
     val coolantMin = 0f
     val coolantMax = 130f
@@ -199,16 +202,151 @@ fun RaceScreen(
                 border = BorderStroke(1.dp, palette.bezelBorder),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Day / Dark mode quick selector
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = { onSetRaceDayMode(true) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isDayMode) palette.zone1 else palette.bezelBorder
+                                ),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (isDayMode) palette.zone1.copy(alpha = 0.16f) else palette.podSurface,
+                                    contentColor = if (isDayMode) palette.zone1 else palette.textSecondary
+                                ),
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("race_day_mode_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.LightMode,
+                                    contentDescription = "Day mode",
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Day",
+                                    fontFamily = ChakraPetchFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = { onSetRaceDayMode(false) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (!isDayMode) palette.zone1 else palette.bezelBorder
+                                ),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (!isDayMode) palette.zone1.copy(alpha = 0.16f) else palette.podSurface,
+                                    contentColor = if (!isDayMode) palette.zone1 else palette.textSecondary
+                                ),
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("race_dark_mode_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.DarkMode,
+                                    contentDescription = "Dark mode",
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Dark",
+                                    fontFamily = ChakraPetchFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        // Lock & Reset layout controls
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = { onSetRaceLayoutLocked(!isLocked) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isLocked) palette.bezelBorder else palette.zone1
+                                ),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (isLocked) palette.podSurface else palette.zone1.copy(alpha = 0.14f),
+                                    contentColor = if (isLocked) palette.textSecondary else palette.zone1
+                                ),
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("race_layout_lock_toggle")
+                            ) {
+                                Icon(
+                                    imageVector = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.OpenWith,
+                                    contentDescription = if (isLocked) "Unlock gauge layout" else "Lock gauge layout",
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isLocked) "Unlock" else "Lock",
+                                    fontFamily = ChakraPetchFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    val defaults = RaceLayoutDefaults.defaultLayout()
+                                    windowMap.clear()
+                                    windowMap.putAll(defaults)
+                                    onResetRaceLayout()
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                border = BorderStroke(1.dp, palette.bezelBorder),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = palette.podSurface,
+                                    contentColor = palette.zone3
+                                ),
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("race_layout_reset_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.RestartAlt,
+                                    contentDescription = "Reset race layout",
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Reset",
+                                    fontFamily = ChakraPetchFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+
                     Text(
                         text = if (isLocked) {
-                            "LAYOUT LOCKED"
+                            "LOCKED • SWIPE ANYWHERE TO SCROLL"
                         } else {
                             "DRAG WINDOW TO MOVE • CORNER ↘ TO RESIZE"
                         },
@@ -217,89 +355,24 @@ fun RaceScreen(
                         fontSize = 9.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (isLocked) palette.textSecondary else palette.zone1,
-                        modifier = Modifier.weight(1f)
+                        color = if (isLocked) palette.textSecondary else palette.zone1
                     )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    OutlinedButton(
-                        onClick = { onSetRaceLayoutLocked(!isLocked) },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isLocked) palette.bezelBorder else palette.zone1
-                        ),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = if (isLocked) palette.podSurface else palette.zone1.copy(alpha = 0.14f),
-                            contentColor = if (isLocked) palette.textSecondary else palette.zone1
-                        ),
-                        modifier = Modifier
-                            .minimumInteractiveComponentSize()
-                            .testTag("race_layout_lock_toggle")
-                    ) {
-                        Icon(
-                            imageVector = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.OpenWith,
-                            contentDescription = if (isLocked) "Unlock gauge layout" else "Lock gauge layout",
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isLocked) "Unlock" else "Lock",
-                            fontFamily = ChakraPetchFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            val defaults = RaceLayoutDefaults.defaultLayout()
-                            windowMap.clear()
-                            windowMap.putAll(defaults)
-                            onResetRaceLayout()
-                        },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        border = BorderStroke(1.dp, palette.bezelBorder),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = palette.podSurface,
-                            contentColor = palette.zone3
-                        ),
-                        modifier = Modifier
-                            .minimumInteractiveComponentSize()
-                            .testTag("race_layout_reset_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.RestartAlt,
-                            contentDescription = "Reset race layout",
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Reset",
-                            fontFamily = ChakraPetchFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        )
-                    }
                 }
             }
         }
 
+        // Outer BoxWithConstraints gets exact finite viewport bounds; inner Column scrolls smoothly!
         BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .testTag("race_adjustable_board")
         ) {
             val density = LocalDensity.current
             val boardWidthDp = maxWidth
+            val viewportHeightDp = maxHeight
             val boardWidthPx = with(density) { boardWidthDp.toPx() }.coerceAtLeast(1f)
-            val maxBottomDp = windowMap.values.maxOfOrNull { it.yDp + it.heightDp } ?: 900f
-            val totalBoardHeightDp = maxOf(maxHeight.value, maxBottomDp + 48f).dp
+            val maxBottomDp = windowMap.values.maxOfOrNull { it.yDp + it.heightDp } ?: 1052f
+            val totalBoardHeightDp = maxOf(viewportHeightDp.value, maxBottomDp + 48f).dp
 
             val bringToFront: (RaceWindowId) -> Unit = { id ->
                 val current = windowMap[id]
@@ -339,146 +412,150 @@ fun RaceScreen(
                 onSaveRaceLayout(windowMap.toMap())
             }
 
-            Box(
+            val boardScrollState = rememberScrollState()
+
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(totalBoardHeightDp)
+                    .fillMaxSize()
+                    .verticalScroll(boardScrollState)
+                    .testTag("race_adjustable_board")
             ) {
-                val orderedEntries = windowMap.entries.sortedBy { it.value.zOrder }
-                for ((id, geom) in orderedEntries) {
-                    AdjustableRaceWindow(
-                        windowId = id,
-                        geometry = geom,
-                        boardWidthPx = boardWidthPx,
-                        isLocked = isLocked,
-                        onBringToFront = bringToFront,
-                        onMoveDelta = onMoveDelta,
-                        onResizeDelta = onResizeDelta,
-                        onCommitGesture = commitGesture
-                    ) {
-                        when (id) {
-                            RaceWindowId.SHIFT_LIGHTS -> {
-                                RaceShiftLightBar(
-                                    rpm = telemetry.rpm,
-                                    rpmRedline = rpmRedline,
-                                    modifier = Modifier.testTag("race_shift_light_bar")
-                                )
-                            }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(totalBoardHeightDp)
+                ) {
+                    val orderedEntries = windowMap.entries.sortedBy { it.value.zOrder }
+                    for ((id, geom) in orderedEntries) {
+                        AdjustableRaceWindow(
+                            windowId = id,
+                            geometry = geom,
+                            boardWidthPx = boardWidthPx,
+                            isLocked = isLocked,
+                            onBringToFront = bringToFront,
+                            onMoveDelta = onMoveDelta,
+                            onResizeDelta = onResizeDelta,
+                            onCommitGesture = commitGesture
+                        ) {
+                            when (id) {
+                                RaceWindowId.SHIFT_LIGHTS -> {
+                                    RaceShiftLightBar(
+                                        rpm = telemetry.rpm,
+                                        rpmRedline = rpmRedline,
+                                        modifier = Modifier.testTag("race_shift_light_bar")
+                                    )
+                                }
 
-                            RaceWindowId.FUEL_BAR -> {
-                                RaceSegmentedBarGauge(
-                                    title = "FUEL",
-                                    topMarker = "F",
-                                    bottomMarker = "E",
-                                    valueText = telemetry.fuelLevelPercent?.let { "${it.roundToInt()}%" } ?: "--%",
-                                    fraction = fuelFraction,
-                                    isWarning = isLowFuel,
-                                    isCoolantMode = false,
-                                    modifier = Modifier.testTag("race_gauge_fuel")
-                                )
-                            }
+                                RaceWindowId.FUEL_BAR -> {
+                                    RaceSegmentedBarGauge(
+                                        title = "FUEL",
+                                        topMarker = "F",
+                                        bottomMarker = "E",
+                                        valueText = telemetry.fuelLevelPercent?.let { "${it.roundToInt()}%" } ?: "--%",
+                                        fraction = fuelFraction,
+                                        isWarning = isLowFuel,
+                                        isCoolantMode = false,
+                                        modifier = Modifier.testTag("race_gauge_fuel")
+                                    )
+                                }
 
-                            RaceWindowId.SPEED_DIAL -> {
-                                RaceSpeedometerDial(
-                                    speedValue = speedDisplayValue,
-                                    speedDisplayText = speedDisplayText,
-                                    speedUnit = speedUnit,
-                                    maxSpeedScale = speedMax,
-                                    speedWarningThreshold = speedWarn,
-                                    majorTickCount = speedTickCount,
-                                    rpmText = rpmText,
-                                    isRedline = isRedline,
-                                    modifier = Modifier.testTag("race_gauge_speedometer")
-                                )
-                            }
+                                RaceWindowId.SPEED_DIAL -> {
+                                    RaceSpeedometerDial(
+                                        speedValue = speedDisplayValue,
+                                        speedDisplayText = speedDisplayText,
+                                        speedUnit = speedUnit,
+                                        maxSpeedScale = speedMax,
+                                        speedWarningThreshold = speedWarn,
+                                        majorTickCount = speedTickCount,
+                                        rpmText = rpmText,
+                                        isRedline = isRedline,
+                                        modifier = Modifier.testTag("race_gauge_speedometer")
+                                    )
+                                }
 
-                            RaceWindowId.COOLANT_BAR -> {
-                                RaceSegmentedBarGauge(
-                                    title = "TEMP",
-                                    topMarker = "H",
-                                    bottomMarker = "C",
-                                    valueText = coolantDisplayValue?.let { "${it.roundToInt()}$tempUnit" } ?: "--$tempUnit",
-                                    fraction = coolantFraction,
-                                    isWarning = isCoolantOverheat,
-                                    isCoolantMode = true,
-                                    modifier = Modifier.testTag("race_gauge_coolant")
-                                )
-                            }
+                                RaceWindowId.COOLANT_BAR -> {
+                                    RaceSegmentedBarGauge(
+                                        title = "TEMP",
+                                        topMarker = "H",
+                                        bottomMarker = "C",
+                                        valueText = coolantDisplayValue?.let { "${it.roundToInt()}$tempUnit" } ?: "--$tempUnit",
+                                        fraction = coolantFraction,
+                                        isWarning = isCoolantOverheat,
+                                        isCoolantMode = true,
+                                        modifier = Modifier.testTag("race_gauge_coolant")
+                                    )
+                                }
 
-                            RaceWindowId.THROTTLE_BAR -> {
-                                RaceThrottleBarCard(
-                                    throttlePercent = telemetry.throttlePercent,
-                                    modifier = Modifier.testTag("race_throttle_bar")
-                                )
-                            }
+                                RaceWindowId.THROTTLE_BAR -> {
+                                    RaceThrottleBarCard(
+                                        throttlePercent = telemetry.throttlePercent,
+                                        modifier = Modifier.testTag("race_throttle_bar")
+                                    )
+                                }
 
-                            RaceWindowId.RPM_POD -> {
-                                RaceCircularArcPod(
-                                    title = "ENGINE RPM",
-                                    valueText = rpmText,
-                                    unit = "RPM",
-                                    value = telemetry.rpm?.toFloat(),
-                                    minValue = 0f,
-                                    maxValue = maxRpmScale,
-                                    gradientColors = listOf(palette.zone1, palette.zone2, palette.zone3, palette.zone5),
-                                    modifier = Modifier.testTag("race_pod_rpm")
-                                )
-                            }
+                                RaceWindowId.RPM_POD -> {
+                                    RaceCircularArcPod(
+                                        title = "ENGINE RPM",
+                                        valueText = rpmText,
+                                        unit = "RPM",
+                                        value = telemetry.rpm?.toFloat(),
+                                        minValue = 0f,
+                                        maxValue = maxRpmScale,
+                                        gradientColors = listOf(palette.zone1, palette.zone2, palette.zone3, palette.zone5),
+                                        modifier = Modifier.testTag("race_pod_rpm")
+                                    )
+                                }
 
-                            RaceWindowId.MAP_POD -> {
-                                RaceCircularArcPod(
-                                    title = "MANIFOLD MAP",
-                                    valueText = mapValueText,
-                                    unit = mapUnit,
-                                    value = mapDisplayValue,
-                                    minValue = 0f,
-                                    maxValue = mapMax,
-                                    gradientColors = listOf(palette.accentBlue, palette.zone1, palette.zone3, palette.zone5),
-                                    modifier = Modifier.testTag("race_pod_map")
-                                )
-                            }
+                                RaceWindowId.MAP_POD -> {
+                                    RaceCircularArcPod(
+                                        title = "MANIFOLD MAP",
+                                        valueText = mapValueText,
+                                        unit = mapUnit,
+                                        value = mapDisplayValue,
+                                        minValue = 0f,
+                                        maxValue = mapMax,
+                                        gradientColors = listOf(palette.accentBlue, palette.zone1, palette.zone3, palette.zone5),
+                                        modifier = Modifier.testTag("race_pod_map")
+                                    )
+                                }
 
-                            RaceWindowId.LOAD_POD -> {
-                                RaceCircularArcPod(
-                                    title = "ENGINE LOAD",
-                                    valueText = telemetry.engineLoadPercent?.let { "${it.roundToInt()}" } ?: "--",
-                                    unit = "%",
-                                    value = telemetry.engineLoadPercent,
-                                    minValue = 0f,
-                                    maxValue = 100f,
-                                    gradientColors = listOf(palette.zone2, palette.zone3, palette.zone4, palette.zone5),
-                                    modifier = Modifier.testTag("race_pod_load")
-                                )
-                            }
+                                RaceWindowId.LOAD_POD -> {
+                                    RaceCircularArcPod(
+                                        title = "ENGINE LOAD",
+                                        valueText = telemetry.engineLoadPercent?.let { "${it.roundToInt()}" } ?: "--",
+                                        unit = "%",
+                                        value = telemetry.engineLoadPercent,
+                                        minValue = 0f,
+                                        maxValue = 100f,
+                                        gradientColors = listOf(palette.zone2, palette.zone3, palette.zone4, palette.zone5),
+                                        modifier = Modifier.testTag("race_pod_load")
+                                    )
+                                }
 
-                            RaceWindowId.PEAKS_CARD -> {
-                                RaceSessionPeaksCard(
-                                    peakRpm = peakRpm,
-                                    peakSpeedDisplay = peakSpeedKph,
-                                    speedUnit = speedUnit,
-                                    batteryVoltsText = voltsText,
-                                    isLowBattery = isLowBatt,
-                                    intakeTempText = intakeText,
-                                    fuelTrimText = stftText,
-                                    onResetPeaks = {
-                                        peakRpm = telemetry.rpm
-                                        peakSpeedKph = calibratedSpeedKph
-                                    },
-                                    modifier = Modifier.testTag("race_peaks_card")
-                                )
-                            }
+                                RaceWindowId.PEAKS_CARD -> {
+                                    RaceSessionPeaksCard(
+                                        peakRpm = peakRpm,
+                                        peakSpeedDisplay = peakSpeedKph,
+                                        speedUnit = speedUnit,
+                                        batteryVoltsText = voltsText,
+                                        isLowBattery = isLowBatt,
+                                        intakeTempText = intakeText,
+                                        fuelTrimText = stftText,
+                                        onResetPeaks = {
+                                            peakRpm = telemetry.rpm
+                                            peakSpeedKph = calibratedSpeedKph
+                                        },
+                                        modifier = Modifier.testTag("race_peaks_card")
+                                    )
+                                }
 
-                            RaceWindowId.INCLINOMETER -> {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .verticalScroll(rememberScrollState())
-                                ) {
+                                RaceWindowId.INCLINOMETER -> {
                                     TrailInclinometerCard(
                                         sensorState = sensorState,
                                         pitchTareDeg = rigPrefs.pitchTareDeg,
                                         rollTareDeg = rigPrefs.rollTareDeg,
-                                        onTareClick = onTareInclinometer
+                                        onTareClick = onTareInclinometer,
+                                        modifier = Modifier.fillMaxSize()
                                     )
                                 }
                             }

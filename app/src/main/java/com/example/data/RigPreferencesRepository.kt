@@ -35,6 +35,7 @@ class RigPreferencesRepository(private val context: Context) {
         val RACE_LAYOUT_SPEC = stringPreferencesKey("race_layout_spec")
         val RACE_LAYOUT_LOCKED = booleanPreferencesKey("race_layout_locked")
         val VISUAL_THEME = stringPreferencesKey("visual_theme")
+        val LAST_DARK_THEME = stringPreferencesKey("last_dark_theme")
         val NIGHT_MODE_SETTING = stringPreferencesKey("night_mode_setting")
         val NIGHT_BRIGHTNESS_PCT = intPreferencesKey("night_brightness_pct")
         val SPEED_CALIBRATION_FACTOR = floatPreferencesKey("speed_calibration_factor")
@@ -44,6 +45,7 @@ class RigPreferencesRepository(private val context: Context) {
         val engineName = prefs[Keys.ENGINE_PROFILE] ?: JkEngineProfile.PENTASTAR_3_6.name
         val unitName = prefs[Keys.UNIT_SYSTEM] ?: UnitSystem.METRIC.name
         val themeName = prefs[Keys.VISUAL_THEME] ?: AppVisualTheme.NEON_CYAN_AMBER.name
+        val lastDarkName = prefs[Keys.LAST_DARK_THEME] ?: AppVisualTheme.NEON_CYAN_AMBER.name
         val nightName = prefs[Keys.NIGHT_MODE_SETTING] ?: NightModeSetting.AUTO_SUN.name
         RigPreferences(
             rigNickname = prefs[Keys.RIG_NICKNAME] ?: "Wrangler JK",
@@ -61,6 +63,9 @@ class RigPreferencesRepository(private val context: Context) {
             raceLayoutSpec = prefs[Keys.RACE_LAYOUT_SPEC] ?: "",
             raceLayoutLocked = prefs[Keys.RACE_LAYOUT_LOCKED] ?: false,
             visualTheme = AppVisualTheme.entries.firstOrNull { it.name == themeName }
+                ?: AppVisualTheme.NEON_CYAN_AMBER,
+            lastDarkTheme = AppVisualTheme.entries.firstOrNull { it.name == lastDarkName }
+                ?.takeIf { it != AppVisualTheme.CLASSIC_WHITE }
                 ?: AppVisualTheme.NEON_CYAN_AMBER,
             nightModeSetting = NightModeSetting.entries.firstOrNull { it.name == nightName }
                 ?: NightModeSetting.AUTO_SUN,
@@ -118,6 +123,9 @@ class RigPreferencesRepository(private val context: Context) {
     suspend fun setVisualTheme(theme: AppVisualTheme) {
         context.rigDataStore.edit { prefs ->
             prefs[Keys.VISUAL_THEME] = theme.name
+            if (theme != AppVisualTheme.CLASSIC_WHITE) {
+                prefs[Keys.LAST_DARK_THEME] = theme.name
+            }
         }
     }
 

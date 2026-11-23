@@ -80,6 +80,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.obd.AppVisualTheme
 import com.example.obd.ConnectionStatus
 import com.example.sensors.PhoneBatteryState
 import com.example.ui.components.BluetoothConnectSheet
@@ -137,7 +138,7 @@ fun WranglerObdApp(
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntry?.destination?.route ?: ROUTE_COCKPIT
+    val currentRoute = backStackEntry?.destination?.route ?: ROUTE_RACE
 
     val bluetoothPermissionsGranted by viewModel.bluetoothPermissionsGranted.collectAsStateWithLifecycle()
     val connectionStatus by viewModel.connectionStatus.collectAsStateWithLifecycle()
@@ -218,18 +219,18 @@ fun WranglerObdApp(
     val destinations = remember {
         listOf(
             NavDestination(
-                route = ROUTE_COCKPIT,
-                labelRes = R.string.nav_cockpit,
-                selectedIcon = Icons.Rounded.Speed,
-                unselectedIcon = Icons.Outlined.Speed,
-                testTag = "nav_tab_cockpit"
-            ),
-            NavDestination(
                 route = ROUTE_RACE,
                 labelRes = R.string.nav_race,
                 selectedIcon = Icons.Rounded.SportsScore,
                 unselectedIcon = Icons.Outlined.SportsScore,
                 testTag = "nav_tab_race"
+            ),
+            NavDestination(
+                route = ROUTE_COCKPIT,
+                labelRes = R.string.nav_cockpit,
+                selectedIcon = Icons.Rounded.Speed,
+                unselectedIcon = Icons.Outlined.Speed,
+                testTag = "nav_tab_cockpit"
             ),
             NavDestination(
                 route = ROUTE_SCANNER,
@@ -390,9 +391,28 @@ fun WranglerObdApp(
 
                 NavHost(
                     navController = navController,
-                    startDestination = ROUTE_COCKPIT,
+                    startDestination = ROUTE_RACE,
                     modifier = Modifier.weight(1f)
                 ) {
+                    composable(ROUTE_RACE) {
+                        RaceScreen(
+                            connectionStatus = connectionStatus,
+                            connectedDevice = connectedDevice,
+                            statusMessage = statusMessage,
+                            vinInfo = vinInfo,
+                            telemetry = telemetry,
+                            sensorState = sensorState,
+                            rigPrefs = rigPrefs,
+                            isDayMode = !isNightModeActive && rigPrefs.visualTheme == AppVisualTheme.CLASSIC_WHITE,
+                            onSetRaceDayMode = viewModel::setRaceDayMode,
+                            onOpenBluetoothSheet = { showBluetoothSheet = true },
+                            onDisconnect = viewModel::disconnectAdapter,
+                            onTareInclinometer = viewModel::tareInclinometer,
+                            onSaveRaceLayout = viewModel::saveRaceLayout,
+                            onResetRaceLayout = viewModel::resetRaceLayout,
+                            onSetRaceLayoutLocked = viewModel::setRaceLayoutLocked
+                        )
+                    }
                     composable(ROUTE_COCKPIT) {
                         CockpitScreen(
                             connectionStatus = connectionStatus,
@@ -405,23 +425,6 @@ fun WranglerObdApp(
                             onOpenBluetoothSheet = { showBluetoothSheet = true },
                             onDisconnect = viewModel::disconnectAdapter,
                             onTareInclinometer = viewModel::tareInclinometer
-                        )
-                    }
-                    composable(ROUTE_RACE) {
-                        RaceScreen(
-                            connectionStatus = connectionStatus,
-                            connectedDevice = connectedDevice,
-                            statusMessage = statusMessage,
-                            vinInfo = vinInfo,
-                            telemetry = telemetry,
-                            sensorState = sensorState,
-                            rigPrefs = rigPrefs,
-                            onOpenBluetoothSheet = { showBluetoothSheet = true },
-                            onDisconnect = viewModel::disconnectAdapter,
-                            onTareInclinometer = viewModel::tareInclinometer,
-                            onSaveRaceLayout = viewModel::saveRaceLayout,
-                            onResetRaceLayout = viewModel::resetRaceLayout,
-                            onSetRaceLayoutLocked = viewModel::setRaceLayoutLocked
                         )
                     }
                     composable(ROUTE_SCANNER) {
