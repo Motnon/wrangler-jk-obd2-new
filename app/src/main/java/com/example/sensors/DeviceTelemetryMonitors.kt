@@ -93,15 +93,25 @@ class GpsSpeedManager(private val context: Context) {
 
     private var lastFix: Location? = null
     private var activeListening = false
+    private var passiveUpdatesActive = false
+    private var activeIntervalMs = 0L
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             val prev = lastFix
             val computedSpeedKph: Float? = when {
-                location.hasSpeed() -> location.speed * 3.6f
+                location.hasSpeed() -> {
+                    val kph = location.speed * 3.6f
+                    if (kph < 1.2f) 0f else kph
+                }
                 prev != null && location.time > prev.time -> {
                     val dtSec = (location.time - prev.time) / 1000f
-                    if (dtSec >= 0.5f) (prev.distanceTo(location) / dtSec) * 3.6f else null
+                    if (dtSec >= 0.5f) {
+                        val calc = (prev.distanceTo(location) / dtSec) * 3.6f
+                        calc.takeIf { it <= 280f }?.let { if (it < 1.2f) 0f else it }
+                    } else {
+                        null
+                    }
                 }
                 else -> null
             }
@@ -164,6 +174,18 @@ class GpsSpeedManager(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
+    fun startPassiveSpeedUpdates() {
+        val mgr = locationManager
+        if (!hasFineLocationPermission() || mgr == null) {
+            refreshLastKnownCoordinates()
+            return
+        }
+        passiveUpdatesActive = true
+        refreshLastKnownCoordinates()
+        requestGpsUpdates(mgr, minTimeMs = 1_000L, isCalibration = _gpsState.value.isCalibrating)
+    }
+
+    @SuppressLint("MissingPermission")
     fun startCalibrationUpdates() {
         val mgr = locationManager
         if (!hasFineLocationPermission() || mgr == null) {
@@ -175,35 +197,64 @@ class GpsSpeedManager(private val context: Context) {
             return
         }
         refreshLastKnownCoordinates()
-        if (activeListening) return
-        activeListening = true
         lastFix = null
         _gpsState.value = _gpsState.value.copy(
             hasLocationPermission = true,
             isCalibrating = true,
             statusNote = "Sampling GPS velocity…"
         )
+        requestGpsUpdates(mgr, minTimeMs = 500L, isCalibration = true)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun requestGpsUpdates(mgr: LocationManager, minTimeMs: Long, isCalibration: Boolean) {
+        if (activeListening && activeIntervalMs <= minTimeMs) return
+        if (activeListening) {
+            runCatching { mgr.removeUpdates(locationListener) }
+            activeListening = false
+        }
+        activeListening = true
+        activeIntervalMs = minTimeMs
         runCatching {
             mgr.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
-                500L,
+                minTimeMs,
                 0f,
                 locationListener,
                 Looper.getMainLooper()
             )
         }.onFailure {
             activeListening = false
-            _gpsState.value = _gpsState.value.copy(
-                isCalibrating = false,
-                statusNote = "GPS provider unavailable on this device"
-            )
+            activeIntervalMs = 0L
+            if (isCalibration) {
+                _gpsState.value = _gpsState.value.copy(
+                    isCalibrating = false,
+                    statusNote = "GPS provider unavailable on this device"
+                )
+            }
         }
     }
 
     fun stopCalibrationUpdates() {
+        _gpsState.value = _gpsState.value.copy(isCalibrating = false)
+        val mgr = locationManager
+        if (passiveUpdatesActive && hasFineLocationPermission() && mgr != null) {
+            if (activeListening && activeIntervalMs < 1_000L) {
+                requestGpsUpdates(mgr, minTimeMs = 1_000L, isCalibration = false)
+            }
+        } else if (activeListening) {
+            runCatching { mgr?.removeUpdates(locationListener) }
+            activeListening = false
+            activeIntervalMs = 0L
+        }
+    }
+
+    fun stopAllUpdates() {
+        passiveUpdatesActive = false
         if (activeListening) {
             runCatching { locationManager?.removeUpdates(locationListener) }
             activeListening = false
+            activeIntervalMs = 0L
         }
         _gpsState.value = _gpsState.value.copy(isCalibrating = false)
     }

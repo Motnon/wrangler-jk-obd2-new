@@ -52,16 +52,21 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.obd.BluetoothDeviceItem
 import com.example.obd.ConnectionStatus
+import com.example.obd.DetectedVehicle
 import com.example.obd.JkEngineProfile
 import com.example.obd.LiveTelemetry
 import com.example.obd.RaceLayoutDefaults
 import com.example.obd.RaceWindowGeometry
 import com.example.obd.RaceWindowId
+import com.example.obd.RealSpeedSource
 import com.example.obd.RigPreferences
 import com.example.obd.TrailSensorState
 import com.example.obd.UnitSystem
+import com.example.obd.VehicleProfile
+import com.example.obd.VehicleProfileId
 import com.example.obd.VinInfo
-import com.example.obd.applyCalibratedSpeedKph
+import com.example.obd.resolveRealSpeed
+import com.example.sensors.GpsTelemetryState
 import com.example.ui.components.AdjustableRaceWindow
 import com.example.ui.components.EcuStatusBanner
 import com.example.ui.components.RaceCircularArcPod
@@ -95,13 +100,29 @@ fun RaceScreen(
     onSaveRaceLayout: (Map<RaceWindowId, RaceWindowGeometry>) -> Unit,
     onResetRaceLayout: () -> Unit,
     onSetRaceLayoutLocked: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    detectedVehicle: DetectedVehicle? = null,
+    activeProfile: VehicleProfile? = null,
+    gpsState: GpsTelemetryState = GpsTelemetryState()
 ) {
     val palette = LocalRacePalette.current
     val strings = LocalAppStrings.current
     val isImperialMap = rigPrefs.unitSystem == UnitSystem.IMPERIAL
 
-    val calibratedSpeedKph = applyCalibratedSpeedKph(telemetry.speedKmh, rigPrefs.speedCalibrationFactor)
+    val resolvedSpeed = resolveRealSpeed(
+        obdRawSpeedKmh = telemetry.speedKmh,
+        gpsSpeedKph = gpsState.gpsSpeedKph,
+        gpsAccuracyMeters = gpsState.accuracyMeters,
+        rigPrefs = rigPrefs,
+        activeProfile = activeProfile
+    )
+    val calibratedSpeedKph = resolvedSpeed.kph
+    val speedBadgeText = when (resolvedSpeed.source) {
+        RealSpeedSource.GPS_LIVE -> strings.gpsSpeedBadge
+        RealSpeedSource.OBD_CALIBRATED -> strings.calSpeedBadge
+        RealSpeedSource.OBD_LIVE -> strings.liveSpeedFormat
+        RealSpeedSource.NONE -> strings.speedUnitKph
+    }
 
     var peakRpm by remember { mutableStateOf<Int?>(null) }
     var peakSpeedKph by remember { mutableStateOf<Int?>(null) }
@@ -127,8 +148,11 @@ fun RaceScreen(
         windowMap.putAll(decoded)
     }
 
-    val maxRpmScale = rigPrefs.engineProfile.maxRpmScale
-    val rpmRedline = rigPrefs.engineProfile.redlineRpm
+    val useProfileRpm = activeProfile != null &&
+        activeProfile.id != VehicleProfileId.JEEP_JK &&
+        activeProfile.id != VehicleProfileId.JEEP_JL
+    val maxRpmScale = if (useProfileRpm) activeProfile!!.maxRpmScale else rigPrefs.engineProfile.maxRpmScale
+    val rpmRedline = if (useProfileRpm) activeProfile!!.redlineRpm else rigPrefs.engineProfile.redlineRpm
 
     val speedDisplayValue: Float? = calibratedSpeedKph?.toFloat()
     val speedMax = 200f
@@ -141,7 +165,7 @@ fun RaceScreen(
     val coolantDisplayValue: Float? = telemetry.coolantCelsius?.toFloat()
     val coolantMin = 0f
     val coolantMax = 130f
-    val coolantWarn = rigPrefs.coolantWarnCelsius.toFloat()
+    val coolantWarn = (activeProfile?.coolantWarnC ?: rigPrefs.coolantWarnCelsius).toFloat()
     val tempUnit = "°C"
     val coolantFraction = coolantDisplayValue?.let {
         ((it - coolantMin) / (coolantMax - coolantMin)).coerceIn(0f, 1f)
@@ -191,7 +215,8 @@ fun RaceScreen(
                 vinInfo = vinInfo,
                 milOn = telemetry.milOn,
                 onConnectClick = onOpenBluetoothSheet,
-                onDisconnectClick = onDisconnect
+                onDisconnectClick = onDisconnect,
+                detectedVehicle = detectedVehicle
             )
 
             Surface(
@@ -364,7 +389,7 @@ fun RaceScreen(
                         color = if (isLocked) palette.textSecondary else palette.zone1
                     )
 
-                    if (vinInfo != null) {
+                    if (detectedVehicle != null || vinInfo != null) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = palette.podSurface,
@@ -381,16 +406,25 @@ fun RaceScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "${strings.vinPrefix}:",
+                                    text = detectedVehicle?.displayTitle ?: "${strings.vinPrefix}:",
                                     fontFamily = ChakraPetchFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp,
-                                    color = palette.zone2
+                                    color = palette.zone2,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
                                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                    val modelTag = vinInfo.detectedModel?.code ?: rigPrefs.wranglerModel.code
+                                    val rightTag = when {
+                                        detectedVehicle?.vin != null -> detectedVehicle.vin
+                                        vinInfo != null -> "${vinInfo.vin} • ${vinInfo.modelYear}"
+                                        detectedVehicle?.protocolName != null -> detectedVehicle.protocolName
+                                        else -> activeProfile?.shortBadge.orEmpty()
+                                    }
                                     Text(
-                                        text = "${vinInfo.vin} • ${vinInfo.modelYear} $modelTag",
+                                        text = rightTag,
                                         fontFamily = JetBrainsMonoFontFamily,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp,
@@ -515,6 +549,7 @@ fun RaceScreen(
                                             maxSpeedScale = speedMax,
                                             speedWarningThreshold = speedWarn,
                                             majorTickCount = speedTickCount,
+                                            speedBadgeText = speedBadgeText,
                                             modifier = Modifier.testTag("race_gauge_speedometer")
                                         )
                                     }

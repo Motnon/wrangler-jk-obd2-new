@@ -99,6 +99,7 @@ object Elm327Protocol {
     fun isNegativeResponse(raw: String): Boolean {
         val lines = sanitizeResponse(raw)
             .replace(Regex("""\b\d+:"""), "\n")
+            .replace(Regex("""(?i)(?=\b(?:7[DE][0-9A-F]|18DA[0-9A-F]{4})\b)"""), "\n")
             .lines()
         var sawNegative = false
         var sawPositive = false
@@ -107,7 +108,12 @@ object Elm327Protocol {
             if (bytes.isEmpty()) continue
             if (isLineNegativeResponse(bytes)) {
                 sawNegative = true
-            } else if (findHeaderIndex(bytes, 0x41) >= 0 || findHeaderIndex(bytes, 0x46) >= 0) {
+            } else if (
+                findHeaderIndex(bytes, 0x41) >= 0 ||
+                findHeaderIndex(bytes, 0x46) >= 0 ||
+                findHeaderIndex(bytes, 0x49) >= 0 ||
+                findHeaderIndex(bytes, 0x62) >= 0
+            ) {
                 sawPositive = true
             }
         }
@@ -141,16 +147,16 @@ object Elm327Protocol {
     }
 
     fun extractHexBytes(line: String): List<Int> {
-        // Strip optional 3-nibble CAN arbitration header like "7E8 " or "7DF " if ATH0 wasn't honored
+        // Strip optional 11-bit ("7E8 ") or 29-bit ("18DAF110 ") CAN arbitration header if ATH0 wasn't honored
         val withoutCanHeader = line.trim()
-            .replace(Regex("""^[0-9A-Fa-f]{3}\s+"""), "")
+            .replace(Regex("""^(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{8})\s+"""), "")
         val tokens = withoutCanHeader.split(Regex("""\s+""")).filter { it.isNotEmpty() }
         var compact = if (tokens.size > 1 && tokens.all { it.length == 2 }) {
             tokens.joinToString("").uppercase()
         } else {
             withoutCanHeader.replace(" ", "").uppercase()
         }
-        // Handle rare unspaced CAN header (e.g., "7E803410582") producing an odd-length hex string
+        // Handle rare unspaced 11-bit CAN header (e.g., "7E803410582") producing an odd-length hex string
         if (compact.length >= 9 && compact.length % 2 == 1 &&
             (compact.startsWith("7E") || compact.startsWith("7DF"))
         ) {
@@ -165,6 +171,7 @@ object Elm327Protocol {
         if (isErrorResponse(raw)) return null
         val lines = sanitizeResponse(raw)
             .replace(Regex("""\b\d+:"""), "\n")
+            .replace(Regex("""(?i)(?=\b(?:7[DE][0-9A-F]|18DA[0-9A-F]{4})\b)"""), "\n")
             .lines()
         for (line in lines) {
             val normalizedLine = line.replace(Regex("""^\d+:"""), "").trim()
@@ -455,21 +462,53 @@ object Elm327Protocol {
     }
 
     /**
-     * Decodes Mode 09 PID 02 (49 02 ...) multi-frame VIN hex response.
+     * Decodes SAE J1979 Mode 01 supported PID bitmask responses (`0100`, `0120`, `0140`, `0160`).
+     * Returns the set of supported Mode 01 PID integers (e.g., 0x05 for Coolant, 0x20 if next block exists).
      */
-    fun decodeVinResponse(raw: String): VinInfo? {
-        if (isErrorResponse(raw)) return null
+    fun decodeSupportedPidBitmask(raw: String, basePid: Int = 0x00): Set<Int> {
+        if (isErrorResponse(raw) || isNegativeResponse(raw)) return emptySet()
+        val lines = sanitizeResponse(raw)
+            .replace(Regex("""\b\d+:"""), "\n")
+            .lines()
+        val supported = linkedSetOf<Int>()
+        for (line in lines) {
+            val bytes = extractHexBytes(line.replace(Regex("""^\d+:"""), "").trim())
+            if (bytes.isEmpty()) continue
+            val idx = findHeaderWithPid(bytes, 0x41, basePid)
+            if (idx >= 0 && idx + 5 < bytes.size) {
+                val maskBytes = bytes.subList(idx + 2, idx + 6)
+                for (byteIdx in 0 until 4) {
+                    val b = maskBytes[byteIdx]
+                    for (bitIdx in 7 downTo 0) {
+                        if ((b and (1 shl bitIdx)) != 0) {
+                            val pidNumber = basePid + 1 + (byteIdx * 8) + (7 - bitIdx)
+                            supported.add(pidNumber)
+                        }
+                    }
+                }
+            }
+        }
+        return supported
+    }
+
+    /**
+     * Extracts raw 17-character ASCII VIN from Mode 09 PID 02 (`49 02 01 ...` CAN ISO-TP or ISO9141/KWP2000).
+     */
+    fun extractStandardVinString(raw: String): String? {
+        if (isErrorResponse(raw) || isNegativeResponse(raw)) return null
         val lines = sanitizeResponse(raw)
             .replace(Regex("""\b\d+:"""), "\n")
             .lines()
         val asciiBytes = mutableListOf<Int>()
         for (line in lines) {
             val cleaned = line.replace(Regex("""^\d+:"""), "").trim()
+            if (Regex("""^[0-9A-Fa-f]{3}$""").matches(cleaned)) continue
             val bytes = extractHexBytes(cleaned)
             if (bytes.isEmpty()) continue
             val idx = findHeaderPair(bytes, 0x49, 0x02)
             if (idx >= 0) {
-                val dropCount = if (idx + 2 < bytes.size && bytes[idx + 2] == 0x01) 3 else 2
+                val hasFrameIndex = idx + 2 < bytes.size && bytes[idx + 2] in 0x01..0x05
+                val dropCount = if (hasFrameIndex) 3 else 2
                 asciiBytes.addAll(bytes.drop(idx + dropCount))
             } else if (asciiBytes.isNotEmpty()) {
                 asciiBytes.addAll(bytes)
@@ -480,64 +519,116 @@ object Elm327Protocol {
             .map { it.toChar() }
             .joinToString("")
             .take(17)
-        if (vin.length != 17) return null
+        return vin.takeIf { it.length == 17 }
+    }
 
-        val yearChar = vin[9]
-        val modelYear = when (yearChar) {
-            '7' -> "2007"
-            '8' -> "2008"
-            '9' -> "2009"
-            'A' -> "2010"
-            'B' -> "2011"
-            'C' -> "2012"
-            'D' -> "2013"
-            'E' -> "2014"
-            'F' -> "2015"
-            'G' -> "2016"
-            'H' -> "2017"
-            'J' -> "2018"
-            'K' -> "2019"
-            'L' -> "2020"
-            'M' -> "2021"
-            'N' -> "2022"
-            'P' -> "2023"
-            'R' -> "2024"
-            'S' -> "2025"
-            'T' -> "2026"
-            else -> "Year Code $yearChar"
+    /**
+     * Extracts raw 17-character ASCII VIN from UDS ReadDataByIdentifier `22F190` (`62 F1 90 ...`).
+     * Handles single-frame and ISO-TP multi-frame (`0: 62 F1 90 ...`, `1: ...`, `2: ...`) responses.
+     */
+    fun extractUdsVinString(raw: String): String? {
+        if (isErrorResponse(raw) || isNegativeResponse(raw)) return null
+        val lines = sanitizeResponse(raw)
+            .replace(Regex("""\b\d+:"""), "\n")
+            .lines()
+        val asciiBytes = mutableListOf<Int>()
+        for (line in lines) {
+            val cleaned = line.replace(Regex("""^\d+:"""), "").trim()
+            if (Regex("""^[0-9A-Fa-f]{3}$""").matches(cleaned)) continue
+            val bytes = extractHexBytes(cleaned)
+            if (bytes.isEmpty()) continue
+            val headerIdx = findHeaderTriple(bytes, 0x62, 0xF1, 0x90)
+            if (headerIdx >= 0) {
+                asciiBytes.addAll(bytes.drop(headerIdx + 3))
+            } else if (asciiBytes.isNotEmpty()) {
+                asciiBytes.addAll(bytes)
+            }
         }
-        val isJeepPrefix = vin.startsWith("1J4") || vin.startsWith("1C4") || vin.startsWith("1J8")
-        val detectedModel: WranglerModel? = when {
-            !isJeepPrefix -> null
-            vin.getOrNull(5) == 'X' || yearChar in listOf('K', 'L', 'M', 'N', 'P', 'R', 'S', 'T') ->
-                WranglerModel.JL
-            yearChar in listOf('7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J') ->
-                WranglerModel.JK
-            else -> null
+        val vin = asciiBytes
+            .filter { it in 0x30..0x39 || it in 0x41..0x5A }
+            .map { it.toChar() }
+            .joinToString("")
+            .take(17)
+        return vin.takeIf { it.length == 17 }
+    }
+
+    /**
+     * Extracts ECU Calibration ID from Mode 09 PID 04 (`49 04 ...`) for pre-2008 vehicles without VIN.
+     */
+    fun decodeCalibrationIdResponse(raw: String): String? {
+        if (isErrorResponse(raw) || isNegativeResponse(raw)) return null
+        val lines = sanitizeResponse(raw)
+            .replace(Regex("""\b\d+:"""), "\n")
+            .lines()
+        val asciiBytes = mutableListOf<Int>()
+        for (line in lines) {
+            val cleaned = line.replace(Regex("""^\d+:"""), "").trim()
+            if (Regex("""^[0-9A-Fa-f]{3}$""").matches(cleaned)) continue
+            val bytes = extractHexBytes(cleaned)
+            if (bytes.isEmpty()) continue
+            val idx = findHeaderPair(bytes, 0x49, 0x04)
+            if (idx >= 0) {
+                val hasCount = idx + 2 < bytes.size && bytes[idx + 2] in 0x01..0x10
+                asciiBytes.addAll(bytes.drop(idx + if (hasCount) 3 else 2))
+            } else if (asciiBytes.isNotEmpty()) {
+                asciiBytes.addAll(bytes)
+            }
         }
-        val isJk = detectedModel == WranglerModel.JK
-        val engineHint = when (vin.getOrNull(7)) {
-            '1' -> "3.8L V6"
-            'G' -> "3.6L Pentastar V6"
-            'N', 'A', '5' -> "2.0L Turbo I4"
-            'P' -> "2.0L 4xe PHEV"
-            'M' -> "3.0L EcoDiesel V6"
-            'J' -> "6.4L 392 HEMI V8"
-            else -> null
+        val cal = asciiBytes
+            .filter { it in 0x20..0x7E }
+            .map { it.toChar() }
+            .joinToString("")
+            .trim()
+        return cal.takeIf { it.length >= 4 }
+    }
+
+    /**
+     * Decodes ELM327 `ATDPN` active protocol number (e.g. `A6` -> ISO 15765-4 CAN 11-bit 500k).
+     */
+    fun decodeProtocolNumberResponse(raw: String): Pair<String, String>? {
+        val cleaned = sanitizeResponse(raw).uppercase().replace(" ", "")
+        if (cleaned.isEmpty() || isErrorResponse(cleaned)) return null
+        val code = cleaned.removePrefix("ATDPN").trim().takeLast(2).let { tail ->
+            val match = Regex("""A?[0-9A-C]""").find(cleaned)
+            match?.value ?: tail
         }
-        val plant = when {
-            vin.getOrNull(10) == 'L' && detectedModel == WranglerModel.JL -> "Toledo North Assembly, OH"
-            vin.getOrNull(10) == 'L' -> "Toledo South Assembly, OH"
-            else -> "FCA / Stellantis Plant ${vin.getOrNull(10)}"
+        val normalized = code.removePrefix("A")
+        val name = when (normalized) {
+            "1" -> "SAE J1850 PWM"
+            "2" -> "SAE J1850 VPW"
+            "3" -> "ISO 9141-2"
+            "4" -> "ISO 14230-4 KWP (5-baud)"
+            "5" -> "ISO 14230-4 KWP (Fast)"
+            "6" -> "ISO 15765-4 CAN (11-bit 500k)"
+            "7" -> "ISO 15765-4 CAN (29-bit 500k)"
+            "8" -> "ISO 15765-4 CAN (11-bit 250k)"
+            "9" -> "ISO 15765-4 CAN (29-bit 250k)"
+            "A" -> "SAE J1939 CAN (29-bit 250k)"
+            else -> "OBD-II Auto ($code)"
         }
+        return code to name
+    }
+
+    private val defaultVinDecoder by lazy { VinDecoder() }
+
+    fun decodeVinString(vin: String, decoder: VinDecoder = defaultVinDecoder): VinInfo? {
+        val detected = decoder.decode(vin) ?: return null
         return VinInfo(
-            vin = vin,
-            modelYear = modelYear,
-            isWranglerJk = isJk,
-            plantSummary = plant,
-            detectedModel = detectedModel,
-            engineHint = engineHint
+            vin = detected.vin ?: vin,
+            modelYear = detected.modelYear ?: "",
+            isWranglerJk = detected.detectedWranglerModel == WranglerModel.JK,
+            plantSummary = detected.plantSummary ?: detected.make,
+            detectedModel = detected.detectedWranglerModel,
+            engineHint = detected.engineHint
         )
+    }
+
+    /**
+     * Decodes Mode 09 PID 02 (49 02 ...) multi-frame VIN hex response into VinInfo.
+     */
+    fun decodeVinResponse(raw: String, decoder: VinDecoder = defaultVinDecoder): VinInfo? {
+        val vin = extractStandardVinString(raw) ?: return null
+        return decodeVinString(vin, decoder)
     }
 
     private fun decodeFuelType(code: Int): String = when (code) {
@@ -557,6 +648,13 @@ object Elm327Protocol {
     private fun findHeaderPair(bytes: List<Int>, b1: Int, b2: Int): Int {
         for (i in 0 until bytes.size - 1) {
             if (bytes[i] == b1 && bytes[i + 1] == b2) return i
+        }
+        return -1
+    }
+
+    private fun findHeaderTriple(bytes: List<Int>, b1: Int, b2: Int, b3: Int): Int {
+        for (i in 0 until bytes.size - 2) {
+            if (bytes[i] == b1 && bytes[i + 1] == b2 && bytes[i + 2] == b3) return i
         }
         return -1
     }

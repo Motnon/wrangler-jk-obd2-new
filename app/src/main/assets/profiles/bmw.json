@@ -1,0 +1,33 @@
+{
+  "id": "bmw",
+  "name": "BMW E / F / G Series & MINI",
+  "make": "BMW",
+  "shortBadge": "BMW",
+  "redlineRpm": 6800,
+  "maxRpmScale": 7500,
+  "coolantWarnC": 112,
+  "lowBatteryVolts": 11.9,
+  "useSupportedPidMaskFiltering": true,
+  "hasSecurityGateway": false,
+  "preferredProtocol": "AUTO",
+  "pids": [
+    { "cmd": "010C", "name": "Engine RPM", "note": "BMW DME engine speed (max 7,000+ petrol / 5,000 diesel)", "unitMetric": "RPM", "unitImperial": "RPM", "mode": "01", "isOptional": false },
+    { "cmd": "0105", "name": "Engine Coolant Temp", "note": "BMW electric thermostat targets 95-110°C in Eco/Normal", "unitMetric": "°C", "unitImperial": "°C", "mode": "01", "isOptional": false },
+    { "cmd": "015C", "name": "Engine Oil Temperature", "note": "DME oil temp sensor (critical on N20/B48/B58/N55/S55)", "unitMetric": "°C", "unitImperial": "°C", "mode": "01", "isOptional": true },
+    { "cmd": "0142", "name": "Control Module Voltage", "note": "IBS / DME voltage (IBS charging up to 14.8V)", "unitMetric": "V", "unitImperial": "V", "mode": "01", "isOptional": true },
+    { "cmd": "ATRV", "name": "Adapter / Battery Voltage", "note": "OBD-II Pin 16 battery voltage", "unitMetric": "V", "unitImperial": "V", "mode": "AT", "isOptional": false },
+    { "cmd": "010D", "name": "Vehicle Speed", "note": "DSC / DME road speed", "unitMetric": "KPH", "unitImperial": "KPH", "mode": "01", "isOptional": false },
+    { "cmd": "010B", "name": "Intake Manifold / Boost (MAP)", "note": "Turbo boost / intake pressure (>100 kPa under load)", "unitMetric": "kPa", "unitImperial": "PSI", "mode": "01", "isOptional": true },
+    { "cmd": "0170", "name": "Turbo Boost Pressure", "note": "TwinPower Turbo commanded/actual boost", "unitMetric": "kPa", "unitImperial": "kPa", "mode": "01", "isOptional": true },
+    { "cmd": "0123", "name": "High-Pressure Fuel Rail", "note": "HPI / HPFP direct-injection rail pressure", "unitMetric": "kPa", "unitImperial": "kPa", "mode": "01", "isOptional": true },
+    { "cmd": "010F", "name": "Intake Air Temp", "note": "Post-intercooler intake air temp", "unitMetric": "°C", "unitImperial": "°C", "mode": "01", "isOptional": false },
+    { "cmd": "0111", "name": "Throttle / Valvetronic", "note": "Throttle body / Valvetronic position", "unitMetric": "%", "unitImperial": "%", "mode": "01", "isOptional": false },
+    { "cmd": "0104", "name": "Engine Load", "note": "DME calculated load", "unitMetric": "%", "unitImperial": "%", "mode": "01", "isOptional": false },
+    { "cmd": "0106", "name": "Short Term Fuel Trim B1", "note": "Lambda integrator trim", "unitMetric": "%", "unitImperial": "%", "mode": "01", "isOptional": true },
+    { "cmd": "0107", "name": "Long Term Fuel Trim B1", "note": "Additive/multiplicative mixture adaptation", "unitMetric": "%", "unitImperial": "%", "mode": "01", "isOptional": true },
+    { "cmd": "0133", "name": "Barometric Pressure", "note": "DME internal ambient pressure sensor", "unitMetric": "kPa", "unitImperial": "PSI", "mode": "01", "isOptional": true },
+    { "cmd": "012F", "name": "Fuel Tank Level", "note": "KOMBI / JBE saddle tank fuel level", "unitMetric": "%", "unitImperial": "%", "mode": "01", "isOptional": true },
+    { "cmd": "0146", "name": "Ambient Air Temp", "note": "Bumper exterior temperature", "unitMetric": "°C", "unitImperial": "°C", "mode": "01", "isOptional": true },
+    { "cmd": "0101", "name": "MIL & DTC Monitor", "note": "OBD emissions monitor & fault count", "unitMetric": "Count", "unitImperial": "Count", "mode": "01", "isOptional": false }
+  ]
+}

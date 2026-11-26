@@ -10,11 +10,13 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.obd.AppLanguage
+import com.example.obd.AppUiStyle
 import com.example.obd.AppVisualTheme
 import com.example.obd.JkEngineProfile
 import com.example.obd.NightModeSetting
 import com.example.obd.RigPreferences
 import com.example.obd.UnitSystem
+import com.example.obd.VehicleProfileId
 import com.example.obd.WranglerModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -45,12 +47,14 @@ class RigPreferencesRepository(private val context: Context) {
         val SELECTED_DIAG_TESTS = stringPreferencesKey("selected_diag_tests")
         val APP_LANGUAGE = stringPreferencesKey("app_language")
         val WRANGLER_MODEL = stringPreferencesKey("wrangler_model")
+        val SELECTED_PROFILE_OVERRIDE_ID = stringPreferencesKey("selected_profile_override_id")
+        val UI_STYLE = stringPreferencesKey("ui_style")
     }
 
     val preferencesFlow: Flow<RigPreferences> = context.rigDataStore.data.map { prefs ->
         val engineName = prefs[Keys.ENGINE_PROFILE] ?: JkEngineProfile.PENTASTAR_3_6.name
         val unitName = prefs[Keys.UNIT_SYSTEM] ?: UnitSystem.METRIC.name
-        val themeName = prefs[Keys.VISUAL_THEME] ?: AppVisualTheme.NEON_CYAN_AMBER.name
+        val themeName = prefs[Keys.VISUAL_THEME] ?: AppVisualTheme.CLASSIC_WHITE.name
         val lastDarkName = prefs[Keys.LAST_DARK_THEME] ?: AppVisualTheme.NEON_CYAN_AMBER.name
         val nightName = prefs[Keys.NIGHT_MODE_SETTING] ?: NightModeSetting.MANUAL_OFF.name
         val langName = prefs[Keys.APP_LANGUAGE]
@@ -83,9 +87,9 @@ class RigPreferencesRepository(private val context: Context) {
             pitchTareDeg = prefs[Keys.PITCH_TARE] ?: 0f,
             rollTareDeg = prefs[Keys.ROLL_TARE] ?: 0f,
             raceLayoutSpec = prefs[Keys.RACE_LAYOUT_SPEC] ?: "",
-            raceLayoutLocked = prefs[Keys.RACE_LAYOUT_LOCKED] ?: false,
+            raceLayoutLocked = prefs[Keys.RACE_LAYOUT_LOCKED] ?: true,
             visualTheme = AppVisualTheme.entries.firstOrNull { it.name == themeName }
-                ?: AppVisualTheme.NEON_CYAN_AMBER,
+                ?: AppVisualTheme.CLASSIC_WHITE,
             lastDarkTheme = AppVisualTheme.entries.firstOrNull { it.name == lastDarkName }
                 ?.takeIf { it != AppVisualTheme.CLASSIC_WHITE }
                 ?: AppVisualTheme.NEON_CYAN_AMBER,
@@ -94,7 +98,10 @@ class RigPreferencesRepository(private val context: Context) {
             nightBrightnessPercent = prefs[Keys.NIGHT_BRIGHTNESS_PCT] ?: 20,
             speedCalibrationFactor = prefs[Keys.SPEED_CALIBRATION_FACTOR] ?: 1.0f,
             selectedDiagnosticTestsCsv = prefs[Keys.SELECTED_DIAG_TESTS] ?: "",
-            appLanguage = resolvedLanguage
+            appLanguage = resolvedLanguage,
+            selectedProfileOverrideId = prefs[Keys.SELECTED_PROFILE_OVERRIDE_ID] ?: VehicleProfileId.AUTO,
+            uiStyle = AppUiStyle.entries.firstOrNull { it.name == prefs[Keys.UI_STYLE] }
+                ?: AppUiStyle.TACTICAL_MOTORSPORT
         )
     }
 
@@ -206,6 +213,18 @@ class RigPreferencesRepository(private val context: Context) {
     suspend fun setAppLanguage(language: AppLanguage) {
         context.rigDataStore.edit { prefs ->
             prefs[Keys.APP_LANGUAGE] = language.name
+        }
+    }
+
+    suspend fun setSelectedProfileOverrideId(profileId: String) {
+        context.rigDataStore.edit { prefs ->
+            prefs[Keys.SELECTED_PROFILE_OVERRIDE_ID] = profileId
+        }
+    }
+
+    suspend fun setUiStyle(uiStyle: AppUiStyle) {
+        context.rigDataStore.edit { prefs ->
+            prefs[Keys.UI_STYLE] = uiStyle.name
         }
     }
 }

@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.obd.BluetoothDeviceItem
+import com.example.obd.CachedVehicleBinding
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.TrailSage
@@ -61,7 +62,8 @@ fun BluetoothConnectSheet(
     onStartScan: () -> Unit,
     onStopScan: () -> Unit,
     onSelectDevice: (BluetoothDeviceItem) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    cachedBindings: Map<String, CachedVehicleBinding> = emptyMap()
 ) {
     val strings = LocalAppStrings.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -260,10 +262,14 @@ fun BluetoothConnectSheet(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         items(devices, key = { it.address }) { device ->
+                            val cached = cachedBindings[device.address.uppercase()]
                             Surface(
                                 shape = MaterialTheme.shapes.medium,
                                 color = MaterialTheme.colorScheme.surfaceVariant,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                border = BorderStroke(
+                                    width = if (device.isVgateAdapter) 1.5.dp else 1.dp,
+                                    color = if (device.isVgateAdapter) TrailSage.copy(alpha = 0.65f) else MaterialTheme.colorScheme.outline
+                                ),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("bt_device_${device.address}")
@@ -297,6 +303,19 @@ fun BluetoothConnectSheet(
                                                     modifier = Modifier.size(14.dp)
                                                 )
                                             }
+                                            if (device.isVgateAdapter) {
+                                                Surface(
+                                                    shape = MaterialTheme.shapes.extraSmall,
+                                                    color = TrailSage.copy(alpha = 0.16f)
+                                                ) {
+                                                    Text(
+                                                        text = "VGATE",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = TrailSage,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
                                         }
                                         Text(
                                             text = device.address,
@@ -304,6 +323,13 @@ fun BluetoothConnectSheet(
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        if (cached != null) {
+                                            Text(
+                                                text = cached.displayTitle + (cached.vin?.let { " • $it" } ?: ""),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TrailSage
+                                            )
+                                        }
                                     }
 
                                     Surface(

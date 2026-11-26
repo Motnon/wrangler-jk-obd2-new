@@ -43,8 +43,10 @@ import com.example.obd.AppVisualTheme
 import com.example.obd.LiveTelemetry
 import com.example.obd.NightModeSetting
 import com.example.obd.RigPreferences
-import com.example.obd.applyCalibratedSpeedKph
+import com.example.obd.VehicleProfile
+import com.example.obd.effectiveSpeedFactor
 import com.example.obd.parseTireSizeInches
+import com.example.obd.resolveRealSpeed
 import com.example.sensors.GpsTelemetryState
 import com.example.sensors.SolarSchedule
 import com.example.ui.i18n.LocalAppStrings
@@ -264,7 +266,8 @@ fun GpsSpeedCalibrationCard(
     onApplyLiveGpsCalibration: () -> Unit,
     onApplyTireRatioCalibration: (Float) -> Unit,
     onSetCalibrationFactor: (Float) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    activeProfile: VehicleProfile? = null
 ) {
     val strings = LocalAppStrings.current
     val parsedTire = parseTireSizeInches(rigPrefs.tireSizeInches)
@@ -274,9 +277,10 @@ fun GpsSpeedCalibrationCard(
     } else {
         1.0f
     }
+    val activeFactor = effectiveSpeedFactor(rigPrefs, activeProfile)
 
-    var manualFactor by remember(rigPrefs.speedCalibrationFactor) {
-        mutableFloatStateOf(rigPrefs.speedCalibrationFactor)
+    var manualFactor by remember(activeFactor) {
+        mutableFloatStateOf(activeFactor)
     }
 
     val gpsLocationLauncher = rememberLauncherForActivityResult(
@@ -287,7 +291,13 @@ fun GpsSpeedCalibrationCard(
     }
 
     val rawObdKph = telemetry.speedKmh
-    val calibratedKph = applyCalibratedSpeedKph(rawObdKph, rigPrefs.speedCalibrationFactor)
+    val calibratedKph = resolveRealSpeed(
+        obdRawSpeedKmh = rawObdKph,
+        gpsSpeedKph = gpsState.gpsSpeedKph,
+        gpsAccuracyMeters = gpsState.accuracyMeters,
+        rigPrefs = rigPrefs,
+        activeProfile = activeProfile
+    ).kph
     val gpsKph = gpsState.gpsSpeedKph
 
     val liveCalculatedFactor = if (gpsKph != null && gpsKph >= 10f && rawObdKph != null && rawObdKph >= 10) {
@@ -296,7 +306,7 @@ fun GpsSpeedCalibrationCard(
         null
     }
 
-    val activeOffsetPct = (rigPrefs.speedCalibrationFactor - 1f) * 100f
+    val activeOffsetPct = (activeFactor - 1f) * 100f
 
     Surface(
         shape = MaterialTheme.shapes.large,
@@ -337,7 +347,7 @@ fun GpsSpeedCalibrationCard(
                     )
                 }
                 Text(
-                    text = String.format(Locale.US, "×%.3f (%+.1f%%)", rigPrefs.speedCalibrationFactor, activeOffsetPct),
+                    text = String.format(Locale.US, "×%.3f (%+.1f%%)", activeFactor, activeOffsetPct),
                     fontFamily = JetBrainsMonoFontFamily,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.labelMedium,

@@ -1,11 +1,13 @@
 package com.example
 
 import com.example.obd.AppLanguage
+import com.example.obd.AppUiStyle
 import com.example.obd.DiagnosticCategory
 import com.example.obd.DiagnosticReadingStatus
 import com.example.obd.DiagnosticTestId
 import com.example.obd.JkEngineProfile
 import com.example.obd.JkSubsystem
+import com.example.obd.RigPreferences
 import com.example.obd.WranglerModel
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.DiagnosticStrings
@@ -68,5 +70,24 @@ class LocalizationTest {
         assertEquals("TIPM / CAN", en.subsystemLabel(JkSubsystem.TIPM_NETWORK, WranglerModel.JK))
         assertEquals("BCM / SGW / CAN", en.subsystemLabel(JkSubsystem.TIPM_NETWORK, WranglerModel.JL))
         assertEquals("BCM / SGW / CAN", he.subsystemLabel(JkSubsystem.TIPM_NETWORK, WranglerModel.JL))
+    }
+
+    @Test
+    fun appStrings_coverAllUiStylesInEnglishAndHebrew() {
+        val en = AppStrings.forLanguage(AppLanguage.ENGLISH)
+        val he = AppStrings.forLanguage(AppLanguage.HEBREW)
+
+        assertEquals(3, AppUiStyle.entries.size)
+        assertEquals(AppUiStyle.TACTICAL_MOTORSPORT, RigPreferences().uiStyle)
+
+        AppUiStyle.entries.forEach { style ->
+            assertTrue(en.uiStyleTitle(style).isNotBlank())
+            assertTrue(en.uiStyleSubtitle(style).isNotBlank())
+            assertTrue(en.uiStyleBadge(style).isNotBlank())
+            assertTrue(he.uiStyleTitle(style).isNotBlank())
+            assertTrue(he.uiStyleSubtitle(style).isNotBlank())
+            assertTrue(he.uiStyleBadge(style).isNotBlank())
+            assertNotEquals(en.uiStyleTitle(style), he.uiStyleTitle(style))
+        }
     }
 }

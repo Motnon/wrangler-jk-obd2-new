@@ -9,6 +9,10 @@ import kotlin.math.roundToInt
  */
 class DiagnosticScanEngine {
 
+    companion object {
+        private val CORE_RESILIENT_COMMANDS = setOf("010C", "0105", "010D")
+    }
+
     private var lastCoolantC: Int? = null
     private var lastEngineOilC: Int? = null
     private var lastAmbientC: Int? = null
@@ -116,6 +120,29 @@ class DiagnosticScanEngine {
     }
 
     /**
+     * Marks Mode 01 PIDs that are absent from the ECU's `0100`/`0120`/`0140`/`0160` supported-PID
+     * bitmasks as unsupported upfront so the real-time scanner never polls unsupported sensors.
+     */
+    fun seedSupportedMode01Pids(supportedPids: Set<Int>) {
+        if (supportedPids.isEmpty()) return
+        for (test in DiagnosticTestId.entries) {
+            for (cmd in test.primaryCommands) {
+                if (cmd.startsWith("01") && cmd.length == 4) {
+                    val pidNum = cmd.substring(2, 4).toIntOrNull(16) ?: continue
+                    if (pidNum !in supportedPids) {
+                        val fb = test.fallbackCommand
+                        if (fb == null || !fb.startsWith("01") ||
+                            (fb.substring(2, 4).toIntOrNull(16) !in supportedPids)
+                        ) {
+                            unsupportedCommands.add(cmd)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Builds a deduplicated ordered command list for the selected diagnostic tests,
      * applying fallback commands (e.g. 0118/0119 or ATRV) when a primary command is unsupported.
      */
@@ -147,12 +174,18 @@ class DiagnosticScanEngine {
         if (rawResponse == null) return null
 
         if (Elm327Protocol.isNegativeResponse(rawResponse)) {
-            unsupportedCommands.add(command)
+            if (command !in CORE_RESILIENT_COMMANDS) {
+                unsupportedCommands.add(command)
+            } else {
+                val negCount = (noDataStreaks["neg_$command"] ?: 0) + 1
+                noDataStreaks["neg_$command"] = negCount
+                if (negCount >= 5) unsupportedCommands.add(command)
+            }
             return null
         }
 
         if (Elm327Protocol.isErrorResponse(rawResponse)) {
-            if (anyValidEcuReplySeen) {
+            if (anyValidEcuReplySeen && command !in CORE_RESILIENT_COMMANDS) {
                 val count = (noDataStreaks[command] ?: 0) + 1
                 noDataStreaks[command] = count
                 if (count >= 2) {
@@ -208,7 +241,7 @@ class DiagnosticScanEngine {
 
         val decoded = Elm327Protocol.decodeMode01(rawResponse, expectedPid = expectedPid)
         if (decoded == null) {
-            if (anyValidEcuReplySeen) {
+            if (anyValidEcuReplySeen && command !in CORE_RESILIENT_COMMANDS) {
                 val count = (noDataStreaks[command] ?: 0) + 1
                 noDataStreaks[command] = count
                 if (count >= 2) unsupportedCommands.add(command)
@@ -218,6 +251,7 @@ class DiagnosticScanEngine {
 
         anyValidEcuReplySeen = true
         noDataStreaks.remove(command)
+        noDataStreaks.remove("neg_$command")
         applyDecodedPid(decoded, nowMs)
         return decoded
     }
@@ -550,7 +584,7 @@ class DiagnosticScanEngine {
             )
             DiagnosticTestId.WARM_UPS_SINCE_CODES_CLEARED -> reading(lastWarmUps?.let { "$it" })
             DiagnosticTestId.HYBRID_BATTERY_LIFE -> reading(
-                lastHybridBatteryPct?.let { "${it.roundToInt()}%" }
+                lastHybridBatteryPct?.let { String.format(Locale.US, "%.1f%%", it) }
             )
         }
     }

@@ -50,12 +50,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.obd.ConnectionStatus
+import com.example.obd.DetectedVehicle
 import com.example.obd.VinInfo
 import com.example.ui.i18n.LocalAppStrings
-import com.example.ui.theme.CautionYellow
-import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
-import com.example.ui.theme.TrailSage
+import com.example.ui.theme.LocalRacePalette
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -68,14 +67,16 @@ fun EcuStatusBanner(
     milOn: Boolean,
     onConnectClick: () -> Unit,
     onDisconnectClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    detectedVehicle: DetectedVehicle? = null
 ) {
     val strings = LocalAppStrings.current
+    val palette = LocalRacePalette.current
     val dotColor by animateColorAsState(
         targetValue = when (connectionStatus) {
-            ConnectionStatus.CONNECTED -> TrailSage
-            ConnectionStatus.CONNECTING, ConnectionStatus.INITIALIZING -> CautionYellow
-            ConnectionStatus.ERROR -> FaultCrimson
+            ConnectionStatus.CONNECTED -> palette.zone2
+            ConnectionStatus.CONNECTING, ConnectionStatus.INITIALIZING -> palette.zone3
+            ConnectionStatus.ERROR -> palette.zone5
             ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.outline
         },
         label = "ecu_status_dot"
@@ -95,7 +96,7 @@ fun EcuStatusBanner(
         border = BorderStroke(
             width = 1.dp,
             color = if (connectionStatus == ConnectionStatus.CONNECTED) {
-                TrailSage.copy(alpha = 0.45f)
+                palette.zone2.copy(alpha = 0.65f)
             } else {
                 MaterialTheme.colorScheme.outline
             }
@@ -129,6 +130,19 @@ fun EcuStatusBanner(
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        if (detectedVehicle != null && (connectionStatus == ConnectionStatus.CONNECTED || connectionStatus == ConnectionStatus.INITIALIZING)) {
+                            Surface(
+                                shape = MaterialTheme.shapes.extraSmall,
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Text(
+                                    text = detectedVehicle.detectionSource.badge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         if (milOn) {
                             Surface(
                                 shape = MaterialTheme.shapes.extraSmall,
@@ -141,22 +155,26 @@ fun EcuStatusBanner(
                                     Icon(
                                         imageVector = Icons.Rounded.Warning,
                                         contentDescription = "Check Engine Light active",
-                                        tint = FaultCrimson,
+                                        tint = palette.zone5,
                                         modifier = Modifier.size(12.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = strings.milOn,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = FaultCrimson
+                                        color = palette.zone5
                                     )
                                 }
                             }
                         }
                     }
                     val displaySubStatus = when {
+                        detectedVehicle != null && (connectionStatus == ConnectionStatus.CONNECTED || connectionStatus == ConnectionStatus.INITIALIZING) -> {
+                            val tail = detectedVehicle.vin ?: detectedVehicle.protocolName ?: adapterName.orEmpty()
+                            if (tail.isNotBlank()) "${detectedVehicle.displayTitle} • $tail" else detectedVehicle.displayTitle
+                        }
                         vinInfo != null && connectionStatus == ConnectionStatus.CONNECTED ->
-                            "${vinInfo.modelYear} ${vinInfo.detectedModel?.code ?: "Wrangler"} • ${vinInfo.vin}"
+                            "${vinInfo.modelYear} ${vinInfo.detectedModel?.code ?: "Vehicle"} • ${vinInfo.vin}"
                         adapterName != null && connectionStatus == ConnectionStatus.CONNECTED ->
                             adapterName
                         statusMessage == "Ready to pair ELM327 adapter" -> strings.readyToPairStatus
@@ -239,10 +257,11 @@ fun CircularArcGauge(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "gauge_fraction"
     )
+    val palette = LocalRacePalette.current
     val isWarning = value != null && value >= warningThreshold
-    val activeArcColor = if (isWarning) FaultCrimson else accentColor
+    val activeArcColor = if (isWarning) palette.zone5 else accentColor
     val trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-    val tickColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+    val tickColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
     val warnFrac = ((warningThreshold - minValue) / (maxValue - minValue)).coerceIn(0f, 1f)
 
     Surface(
@@ -251,7 +270,7 @@ fun CircularArcGauge(
         color = MaterialTheme.colorScheme.surfaceVariant,
         border = BorderStroke(
             1.dp,
-            if (isWarning) FaultCrimson.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline
+            if (isWarning) palette.zone5.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline
         )
     ) {
         Column(
@@ -289,7 +308,7 @@ fun CircularArcGauge(
 
                     // Warning zone marker arc
                     drawArc(
-                        color = FaultCrimson.copy(alpha = 0.32f),
+                        color = palette.zone5.copy(alpha = 0.42f),
                         startAngle = startAngle + totalSweep * warnFrac,
                         sweepAngle = totalSweep * (1f - warnFrac),
                         useCenter = false,
@@ -329,7 +348,7 @@ fun CircularArcGauge(
                             center.y + (outerRadius * sin(rad)).toFloat()
                         )
                         drawLine(
-                            color = if (step / 10f >= warnFrac) FaultCrimson.copy(alpha = 0.7f) else tickColor,
+                            color = if (step / 10f >= warnFrac) palette.zone5.copy(alpha = 0.8f) else tickColor,
                             start = p1,
                             end = p2,
                             strokeWidth = if (step % 2 == 0) 2.dp.toPx() else 1.dp.toPx()
@@ -346,7 +365,7 @@ fun CircularArcGauge(
                         color = if (value == null) {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else if (isWarning) {
-                            FaultCrimson
+                            palette.zone5
                         } else {
                             MaterialTheme.colorScheme.onSurface
                         }

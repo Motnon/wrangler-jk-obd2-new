@@ -54,6 +54,12 @@ enum class AppVisualTheme(val label: String, val subtitle: String) {
     CLASSIC_WHITE("Classic White", "Crisp motorsport dial white")
 }
 
+enum class AppUiStyle(val id: String) {
+    TACTICAL_MOTORSPORT("tactical_motorsport"),
+    AVIONICS_HUD("avionics_hud"),
+    AUTOMOTIVE_INFOTAINMENT("automotive_infotainment")
+}
+
 enum class NightModeSetting(val label: String) {
     AUTO_SUN("Auto Sun"),
     MANUAL_ON("Night On"),
@@ -74,8 +80,8 @@ enum class ConnectionStatus {
 }
 
 enum class TransportType(val badge: String) {
-    CLASSIC_SPP("BT SPP"),
-    BLE_GATT("BLE")
+    CLASSIC_SPP("SPP / VLINK"),
+    BLE_GATT("BLE 4.0")
 }
 
 data class BluetoothDeviceItem(
@@ -84,7 +90,13 @@ data class BluetoothDeviceItem(
     val isPaired: Boolean,
     val transportType: TransportType,
     val rssi: Int? = null
-)
+) {
+    val isVgateAdapter: Boolean
+        get() {
+            val u = name.uppercase()
+            return u.contains("VLINK") || u.contains("VGATE") || u.contains("ICAR")
+        }
+}
 
 data class LiveTelemetry(
     val rpm: Int? = null,
@@ -189,14 +201,16 @@ data class RigPreferences(
     val pitchTareDeg: Float = 0f,
     val rollTareDeg: Float = 0f,
     val raceLayoutSpec: String = "",
-    val raceLayoutLocked: Boolean = false,
-    val visualTheme: AppVisualTheme = AppVisualTheme.NEON_CYAN_AMBER,
+    val raceLayoutLocked: Boolean = true,
+    val visualTheme: AppVisualTheme = AppVisualTheme.CLASSIC_WHITE,
     val lastDarkTheme: AppVisualTheme = AppVisualTheme.NEON_CYAN_AMBER,
     val nightModeSetting: NightModeSetting = NightModeSetting.MANUAL_OFF,
     val nightBrightnessPercent: Int = 20,
     val speedCalibrationFactor: Float = 1.0f,
     val selectedDiagnosticTestsCsv: String = "",
-    val appLanguage: AppLanguage = AppLanguage.ENGLISH
+    val appLanguage: AppLanguage = AppLanguage.ENGLISH,
+    val selectedProfileOverrideId: String = VehicleProfileId.AUTO,
+    val uiStyle: AppUiStyle = AppUiStyle.TACTICAL_MOTORSPORT
 )
 
 fun parseTireSizeInches(raw: String): Float? {
@@ -208,3 +222,116 @@ fun applyCalibratedSpeedKph(rawSpeedKmh: Int?, factor: Float): Int? {
     if (rawSpeedKmh == null) return null
     return kotlin.math.round(rawSpeedKmh * factor.coerceIn(0.70f, 1.45f)).toInt()
 }
+
+enum class RealSpeedSource {
+    NONE,
+    OBD_LIVE,
+    OBD_CALIBRATED,
+    GPS_LIVE
+}
+
+data class RealSpeedReading(
+    val kph: Int?,
+    val source: RealSpeedSource,
+    val factorApplied: Float = 1.0f
+)
+
+/**
+ * Resolves the active speed correction factor:
+ * 1) Explicit manual / GPS-matched calibration factor stored in RigPreferences
+ * 2) Automatic oversized-tire diameter ratio when running Wrangler JK/JL profiles with modified tires
+ * 3) Default 1.0f for stock vehicles or non-Wrangler profiles
+ */
+fun effectiveSpeedFactor(
+    rigPrefs: RigPreferences,
+    activeProfile: VehicleProfile? = null
+): Float {
+    if (kotlin.math.abs(rigPrefs.speedCalibrationFactor - 1.0f) >= 0.005f) {
+        return rigPrefs.speedCalibrationFactor.coerceIn(0.70f, 1.45f)
+    }
+    val isWranglerProfile = activeProfile == null ||
+        activeProfile.id == VehicleProfileId.JEEP_JK ||
+        activeProfile.id == VehicleProfileId.JEEP_JL
+    if (isWranglerProfile) {
+        val actualTire = parseTireSizeInches(rigPrefs.tireSizeInches)
+        if (actualTire != null &&
+            rigPrefs.stockTireInches > 0f &&
+            kotlin.math.abs(actualTire - rigPrefs.stockTireInches) >= 0.5f
+        ) {
+            return (actualTire / rigPrefs.stockTireInches).coerceIn(0.70f, 1.45f)
+        }
+    }
+    return 1.0f
+}
+
+/**
+ * Computes true vehicle road speed in KM/h combining OBD-II PID 010D, tire/axle ratio calculation,
+ * and live GPS velocity fallback/verification.
+ */
+fun resolveRealSpeed(
+    obdRawSpeedKmh: Int?,
+    gpsSpeedKph: Float?,
+    gpsAccuracyMeters: Float?,
+    rigPrefs: RigPreferences,
+    activeProfile: VehicleProfile? = null
+): RealSpeedReading {
+    val factor = effectiveSpeedFactor(rigPrefs, activeProfile)
+    val gpsAccurate = gpsSpeedKph != null && (gpsAccuracyMeters == null || gpsAccuracyMeters <= 25f)
+
+    if (obdRawSpeedKmh != null) {
+        // Guard against stuck/zeroed VSS (e.g., aftermarket trans/t-case sensor failure while driving)
+        if (obdRawSpeedKmh == 0 && gpsAccurate && gpsSpeedKph!! >= 8f) {
+            return RealSpeedReading(
+                kph = kotlin.math.round(gpsSpeedKph).toInt(),
+                source = RealSpeedSource.GPS_LIVE,
+                factorApplied = factor
+            )
+        }
+        val calKph = applyCalibratedSpeedKph(obdRawSpeedKmh, factor)!!
+        val hasExplicitCalibration = kotlin.math.abs(rigPrefs.speedCalibrationFactor - 1.0f) >= 0.005f
+        // If driving >= 10 KPH with strong GPS lock and no explicit manual multiplier overrides,
+        // verify OBD speed against real GPS ground speed and correct re-gear/tire discrepancies > 4%.
+        if (!hasExplicitCalibration &&
+            gpsSpeedKph != null &&
+            gpsSpeedKph >= 10f &&
+            obdRawSpeedKmh >= 10 &&
+            (gpsAccuracyMeters == null || gpsAccuracyMeters <= 20f)
+        ) {
+            val driftRatio = kotlin.math.abs(gpsSpeedKph - calKph) / gpsSpeedKph.coerceAtLeast(1f)
+            if (driftRatio > 0.04f) {
+                val liveFactor = (gpsSpeedKph / obdRawSpeedKmh.toFloat()).coerceIn(0.70f, 1.45f)
+                return RealSpeedReading(
+                    kph = kotlin.math.round(gpsSpeedKph).toInt(),
+                    source = RealSpeedSource.GPS_LIVE,
+                    factorApplied = liveFactor
+                )
+            }
+        }
+        val source = if (kotlin.math.abs(factor - 1.0f) >= 0.005f) {
+            RealSpeedSource.OBD_CALIBRATED
+        } else {
+            RealSpeedSource.OBD_LIVE
+        }
+        return RealSpeedReading(
+            kph = calKph,
+            source = source,
+            factorApplied = factor
+        )
+    }
+
+    if (gpsSpeedKph != null) {
+        val cleanGps = if (gpsSpeedKph < 2.5f) 0 else kotlin.math.round(gpsSpeedKph).toInt()
+        return RealSpeedReading(
+            kph = cleanGps,
+            source = RealSpeedSource.GPS_LIVE,
+            factorApplied = factor
+        )
+    }
+
+    return RealSpeedReading(
+        kph = null,
+        source = RealSpeedSource.NONE,
+        factorApplied = factor
+    )
+}
+

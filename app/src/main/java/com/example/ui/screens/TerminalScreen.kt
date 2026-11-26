@@ -50,12 +50,16 @@ import com.example.R
 import com.example.obd.ConnectionStatus
 import com.example.obd.JkDiagnosticLibrary
 import com.example.obd.LiveTelemetry
+import com.example.obd.ObdPidDefinition
 import com.example.obd.RigPreferences
 import com.example.obd.TerminalDirection
 import com.example.obd.TerminalEntry
 import com.example.obd.UnitSystem
+import com.example.obd.VehicleProfile
+import com.example.obd.VehicleProfileLoader
 import com.example.obd.WranglerModel
 import com.example.obd.applyCalibratedSpeedKph
+import com.example.obd.effectiveSpeedFactor
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -72,19 +76,31 @@ fun TerminalScreen(
     rigPrefs: RigPreferences,
     onSendCommand: (String) -> Unit,
     onOpenBluetoothSheet: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    activeProfile: VehicleProfile? = null,
+    supportedMode01Pids: Set<Int> = emptySet()
 ) {
     val strings = LocalAppStrings.current
     var commandInput by remember { mutableStateOf("") }
-    val presetCommands = remember(rigPrefs.wranglerModel) {
-        if (rigPrefs.wranglerModel == WranglerModel.JL) {
-            listOf("ATZ", "ATI", "ATRV", "0100", "0105", "015C", "010C", "0123", "0170", "015B", "012F", "0142", "03", "0902")
-        } else {
-            listOf("ATZ", "ATI", "ATRV", "0100", "0105", "010C", "012F", "0142", "03", "0902")
-        }
+    val presetCommands = remember(activeProfile?.id) {
+        listOf("ATZ", "ATSP0", "ATDPN", "0100", "0902", "22F190", "0904", "ATRV", "0105", "010C", "015C", "0142", "03")
     }
-    val visiblePids = remember(rigPrefs.wranglerModel) {
-        JkDiagnosticLibrary.supportedPidsFor(rigPrefs.wranglerModel)
+    val visiblePids = remember(activeProfile, supportedMode01Pids, rigPrefs.wranglerModel) {
+        if (activeProfile != null && activeProfile.pids.isNotEmpty()) {
+            VehicleProfileLoader(context = null)
+                .resolveActivePids(activeProfile, supportedMode01Pids)
+                .map { pid ->
+                    ObdPidDefinition(
+                        pidHex = pid.cmd,
+                        name = pid.name,
+                        jkNote = pid.note,
+                        unitImperial = pid.unitImperial,
+                        unitMetric = pid.unitMetric
+                    )
+                }
+        } else {
+            JkDiagnosticLibrary.supportedPidsFor(rigPrefs.wranglerModel)
+        }
     }
 
     Column(
@@ -218,7 +234,11 @@ fun TerminalScreen(
                 item {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = String.format(Locale.US, strings.supportedPidMonitorFormat, rigPrefs.wranglerModel.code),
+                        text = String.format(
+                            Locale.US,
+                            strings.profileMonitorFormat,
+                            activeProfile?.shortBadge ?: rigPrefs.wranglerModel.code
+                        ),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -230,7 +250,7 @@ fun TerminalScreen(
                         pidHex = pid.pidHex,
                         t = telemetry,
                         imperial = isImperial,
-                        speedFactor = rigPrefs.speedCalibrationFactor
+                        speedFactor = effectiveSpeedFactor(rigPrefs, activeProfile)
                     )
                     val unitLabel = when (pid.pidHex) {
                         "0105", "010F", "0146", "015C" -> "°C"

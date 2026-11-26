@@ -1,5 +1,6 @@
 package com.example.ui.theme
 
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -11,6 +12,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.obd.AppUiStyle
 import com.example.obd.AppVisualTheme
 
 @Immutable
@@ -204,15 +206,15 @@ private val DeepGreenColorScheme = darkColorScheme(
 
 private val ClassicWhiteColorScheme = lightColorScheme(
     primary = ClassicBlueAccent,
-    onPrimary = DaylightSurface,
+    onPrimary = Color(0xFFF8FAFC),
     primaryContainer = BlueContainerLight,
     onPrimaryContainer = OnBlueContainerLight,
     secondary = ClassicAmberAccent,
-    onSecondary = DaylightSurface,
+    onSecondary = Color(0xFFF8FAFC),
     secondaryContainer = AmberContainerLight,
     onSecondaryContainer = OnAmberContainerLight,
     tertiary = TrailSageLight,
-    onTertiary = DaylightSurface,
+    onTertiary = Color(0xFFF8FAFC),
     tertiaryContainer = SageContainerLight,
     onTertiaryContainer = OnSageContainerLight,
     background = DaylightBg,
@@ -227,7 +229,7 @@ private val ClassicWhiteColorScheme = lightColorScheme(
     outline = DaylightBorder,
     outlineVariant = DaylightBorder,
     error = FaultCrimsonLight,
-    onError = DaylightSurface,
+    onError = Color(0xFFF8FAFC),
     errorContainer = CrimsonContainerLight,
     onErrorContainer = OnCrimsonContainerLight
 )
@@ -268,10 +270,27 @@ private val WranglerShapes = Shapes(
     extraLarge = RoundedCornerShape(24.dp)
 )
 
+private val AvionicsHudShapes = Shapes(
+    extraSmall = CutCornerShape(4.dp),
+    small = CutCornerShape(7.dp),
+    medium = CutCornerShape(10.dp),
+    large = CutCornerShape(14.dp),
+    extraLarge = CutCornerShape(18.dp)
+)
+
+private val AutomotiveSplitShapes = Shapes(
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(22.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(32.dp)
+)
+
 @Composable
 fun WranglerObdTheme(
     visualTheme: AppVisualTheme = AppVisualTheme.NEON_CYAN_AMBER,
     isNightMode: Boolean = false,
+    uiStyle: AppUiStyle = AppUiStyle.TACTICAL_MOTORSPORT,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (isNightMode) {
@@ -296,11 +315,17 @@ fun WranglerObdTheme(
         }
     }
 
+    val shapes = when (uiStyle) {
+        AppUiStyle.TACTICAL_MOTORSPORT -> WranglerShapes
+        AppUiStyle.AVIONICS_HUD -> AvionicsHudShapes
+        AppUiStyle.AUTOMOTIVE_INFOTAINMENT -> AutomotiveSplitShapes
+    }
+
     CompositionLocalProvider(LocalRacePalette provides racePalette) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
-            shapes = WranglerShapes,
+            shapes = shapes,
             content = content
         )
     }

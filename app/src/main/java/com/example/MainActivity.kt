@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.BatteryStd
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.BluetoothConnected
 import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.DashboardCustomize
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.FactCheck
 import androidx.compose.material.icons.rounded.Speed
@@ -92,10 +93,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.obd.AppLanguage
+import com.example.obd.AppUiStyle
 import com.example.obd.AppVisualTheme
 import com.example.obd.ConnectionStatus
 import com.example.sensors.PhoneBatteryState
 import com.example.ui.components.BluetoothConnectSheet
+import com.example.ui.components.UiStylePickerSheet
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.screens.CockpitScreen
@@ -104,6 +107,8 @@ import com.example.ui.screens.LiveDiagnosticsScreen
 import com.example.ui.screens.RaceScreen
 import com.example.ui.screens.ScannerScreen
 import com.example.ui.screens.TerminalScreen
+import com.example.ui.styles.AutomotiveInfotainmentShell
+import com.example.ui.styles.AvionicsHudShell
 import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalRacePalette
@@ -137,6 +142,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             val viewModel: WranglerObdViewModel = viewModel()
             val rigPrefs by viewModel.rigPreferences.collectAsStateWithLifecycle()
@@ -171,7 +177,8 @@ class MainActivity : ComponentActivity() {
             ) {
                 WranglerObdTheme(
                     visualTheme = rigPrefs.visualTheme,
-                    isNightMode = isNightModeActive
+                    isNightMode = isNightModeActive,
+                    uiStyle = rigPrefs.uiStyle
                 ) {
                     WranglerObdApp(
                         viewModel = viewModel,
@@ -203,6 +210,10 @@ fun WranglerObdApp(
     val activeDtcs by viewModel.activeDtcs.collectAsStateWithLifecycle()
     val pendingDtcs by viewModel.pendingDtcs.collectAsStateWithLifecycle()
     val vinInfo by viewModel.vinInfo.collectAsStateWithLifecycle()
+    val detectedVehicle by viewModel.detectedVehicle.collectAsStateWithLifecycle()
+    val activeProfile by viewModel.activeProfile.collectAsStateWithLifecycle()
+    val supportedMode01Pids by viewModel.supportedMode01Pids.collectAsStateWithLifecycle()
+    val cachedBindings by viewModel.cachedBindings.collectAsStateWithLifecycle()
     val terminalLogs by viewModel.terminalLogs.collectAsStateWithLifecycle()
     val sensorState by viewModel.sensorState.collectAsStateWithLifecycle()
     val phoneBattery by viewModel.phoneBatteryState.collectAsStateWithLifecycle()
@@ -221,16 +232,15 @@ fun WranglerObdApp(
     val diagnosticCycleCount by viewModel.diagnosticCycleCount.collectAsStateWithLifecycle()
     val feedbackMessage by viewModel.uiFeedbackMessage.collectAsStateWithLifecycle()
 
-    LaunchedEffect(currentRoute) {
-        viewModel.setDiagnosticScreenVisible(currentRoute == ROUTE_DIAGNOSTICS)
-    }
-
     var showBluetoothSheet by remember { mutableStateOf(false) }
+    var showUiStyleSheet by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val strings = LocalAppStrings.current
 
     val context = LocalContext.current
     LaunchedEffect(isNightModeActive, rigPrefs.nightBrightnessPercent) {
         val window = (hostActivity ?: (context as? Activity))?.window ?: return@LaunchedEffect
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val params = window.attributes
         params.screenBrightness = if (isNightModeActive) {
             (rigPrefs.nightBrightnessPercent / 100f).coerceIn(0.05f, 0.70f)
@@ -335,61 +345,226 @@ fun WranglerObdApp(
         }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val useNavRail = maxWidth >= 680.dp
+    when (rigPrefs.uiStyle) {
+        AppUiStyle.AVIONICS_HUD -> {
+            AvionicsHudShell(
+                connectionStatus = connectionStatus,
+                connectedDevice = connectedDevice,
+                statusMessage = statusMessage,
+                vinInfo = vinInfo,
+                detectedVehicle = detectedVehicle,
+                activeProfile = activeProfile,
+                supportedMode01Pids = supportedMode01Pids,
+                cachedBindings = cachedBindings,
+                telemetry = telemetry,
+                activeDtcs = activeDtcs,
+                pendingDtcs = pendingDtcs,
+                terminalLogs = terminalLogs,
+                sensorState = sensorState,
+                phoneBattery = phoneBattery,
+                gpsState = gpsState,
+                solarSchedule = solarSchedule,
+                isNightModeActive = isNightModeActive,
+                rigPrefs = rigPrefs,
+                scanHistory = scanHistory,
+                dtcSearchQuery = dtcSearchQuery,
+                selectedDtcModelFilter = selectedDtcModelFilter,
+                selectedSubsystem = selectedSubsystem,
+                catalogCodes = catalogCodes,
+                appliedDiagnosticTests = appliedDiagnosticTests,
+                diagnosticReadings = diagnosticReadings,
+                isDiagnosticScanPaused = isDiagnosticScanPaused,
+                diagnosticCycleCount = diagnosticCycleCount,
+                hasFineLocationPermission = viewModel.hasFineLocationPermission(),
+                snackbarHostState = snackbarHostState,
+                onOpenBluetoothSheet = { showBluetoothSheet = true },
+                onOpenUiStyleSheet = { showUiStyleSheet = true },
+                onDisconnect = viewModel::disconnectAdapter,
+                onTareInclinometer = viewModel::tareInclinometer,
+                onSetRaceDayMode = viewModel::setRaceDayMode,
+                onDiagnosticScreenVisibleChanged = viewModel::setDiagnosticScreenVisible,
+                onApplyDiagnosticTests = viewModel::applyDiagnosticTests,
+                onToggleDiagnosticPause = viewModel::toggleDiagnosticScanPaused,
+                onReprobeUnsupportedDiagnostics = viewModel::reprobeUnsupportedDiagnostics,
+                onDtcSearchQueryChange = viewModel::updateDtcSearchQuery,
+                onSelectDtcModelFilter = viewModel::selectDtcModelFilter,
+                onSelectSubsystem = viewModel::selectSubsystem,
+                onScanEcu = viewModel::readDtcsFromEcu,
+                onClearEcuCodes = viewModel::clearDtcsOnEcu,
+                onSaveSnapshot = viewModel::saveScanSnapshot,
+                onSendTerminalCommand = viewModel::sendTerminalCommand,
+                onUpdateRigDetails = viewModel::updateRigDetails,
+                onSelectWranglerModel = viewModel::setWranglerModel,
+                onSelectEngine = viewModel::setEngineProfile,
+                onSelectUnitSystem = viewModel::setUnitSystem,
+                onUpdateAlertThresholds = viewModel::setAlertThresholds,
+                onSelectVisualTheme = viewModel::setVisualTheme,
+                onSelectNightMode = viewModel::setNightModeSetting,
+                onNightBrightnessChange = viewModel::setNightBrightnessPercent,
+                onSelectAppLanguage = viewModel::setAppLanguage,
+                onSelectUiStyle = viewModel::setUiStyle,
+                onLocationPermissionResult = viewModel::onLocationPermissionResult,
+                onStartGpsCalibration = viewModel::startGpsCalibration,
+                onStopGpsCalibration = viewModel::stopGpsCalibration,
+                onApplyLiveGpsCalibration = viewModel::applyLiveGpsSpeedCalibration,
+                onApplyTireRatioCalibration = viewModel::applyTireRatioCalibration,
+                onSetSpeedCalibrationFactor = { viewModel.setSpeedCalibrationFactor(it) },
+                onResetInclinometerTare = viewModel::resetInclinometerTare,
+                onDeleteScanRecord = viewModel::deleteScanRecord,
+                onSelectProfileOverride = viewModel::setManualProfileOverride,
+                onForgetCachedAdapter = viewModel::forgetCachedAdapter
+            )
+        }
 
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            contentWindowInsets = WindowInsets.safeDrawing,
-            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-            topBar = {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            text = rigPrefs.rigNickname.uppercase(),
-                            style = MaterialTheme.typography.titleLarge
+        AppUiStyle.AUTOMOTIVE_INFOTAINMENT -> {
+            AutomotiveInfotainmentShell(
+                connectionStatus = connectionStatus,
+                connectedDevice = connectedDevice,
+                statusMessage = statusMessage,
+                vinInfo = vinInfo,
+                detectedVehicle = detectedVehicle,
+                activeProfile = activeProfile,
+                supportedMode01Pids = supportedMode01Pids,
+                cachedBindings = cachedBindings,
+                telemetry = telemetry,
+                activeDtcs = activeDtcs,
+                pendingDtcs = pendingDtcs,
+                terminalLogs = terminalLogs,
+                sensorState = sensorState,
+                phoneBattery = phoneBattery,
+                gpsState = gpsState,
+                solarSchedule = solarSchedule,
+                isNightModeActive = isNightModeActive,
+                rigPrefs = rigPrefs,
+                scanHistory = scanHistory,
+                dtcSearchQuery = dtcSearchQuery,
+                selectedDtcModelFilter = selectedDtcModelFilter,
+                selectedSubsystem = selectedSubsystem,
+                catalogCodes = catalogCodes,
+                appliedDiagnosticTests = appliedDiagnosticTests,
+                diagnosticReadings = diagnosticReadings,
+                isDiagnosticScanPaused = isDiagnosticScanPaused,
+                diagnosticCycleCount = diagnosticCycleCount,
+                hasFineLocationPermission = viewModel.hasFineLocationPermission(),
+                snackbarHostState = snackbarHostState,
+                onOpenBluetoothSheet = { showBluetoothSheet = true },
+                onOpenUiStyleSheet = { showUiStyleSheet = true },
+                onDisconnect = viewModel::disconnectAdapter,
+                onTareInclinometer = viewModel::tareInclinometer,
+                onSetRaceDayMode = viewModel::setRaceDayMode,
+                onSaveRaceLayout = viewModel::saveRaceLayout,
+                onResetRaceLayout = viewModel::resetRaceLayout,
+                onSetRaceLayoutLocked = viewModel::setRaceLayoutLocked,
+                onDiagnosticScreenVisibleChanged = viewModel::setDiagnosticScreenVisible,
+                onApplyDiagnosticTests = viewModel::applyDiagnosticTests,
+                onToggleDiagnosticPause = viewModel::toggleDiagnosticScanPaused,
+                onReprobeUnsupportedDiagnostics = viewModel::reprobeUnsupportedDiagnostics,
+                onDtcSearchQueryChange = viewModel::updateDtcSearchQuery,
+                onSelectDtcModelFilter = viewModel::selectDtcModelFilter,
+                onSelectSubsystem = viewModel::selectSubsystem,
+                onScanEcu = viewModel::readDtcsFromEcu,
+                onClearEcuCodes = viewModel::clearDtcsOnEcu,
+                onSaveSnapshot = viewModel::saveScanSnapshot,
+                onSendTerminalCommand = viewModel::sendTerminalCommand,
+                onUpdateRigDetails = viewModel::updateRigDetails,
+                onSelectWranglerModel = viewModel::setWranglerModel,
+                onSelectEngine = viewModel::setEngineProfile,
+                onSelectUnitSystem = viewModel::setUnitSystem,
+                onUpdateAlertThresholds = viewModel::setAlertThresholds,
+                onSelectVisualTheme = viewModel::setVisualTheme,
+                onSelectNightMode = viewModel::setNightModeSetting,
+                onNightBrightnessChange = viewModel::setNightBrightnessPercent,
+                onSelectAppLanguage = viewModel::setAppLanguage,
+                onSelectUiStyle = viewModel::setUiStyle,
+                onLocationPermissionResult = viewModel::onLocationPermissionResult,
+                onStartGpsCalibration = viewModel::startGpsCalibration,
+                onStopGpsCalibration = viewModel::stopGpsCalibration,
+                onApplyLiveGpsCalibration = viewModel::applyLiveGpsSpeedCalibration,
+                onApplyTireRatioCalibration = viewModel::applyTireRatioCalibration,
+                onSetSpeedCalibrationFactor = { viewModel.setSpeedCalibrationFactor(it) },
+                onResetInclinometerTare = viewModel::resetInclinometerTare,
+                onDeleteScanRecord = viewModel::deleteScanRecord,
+                onSelectProfileOverride = viewModel::setManualProfileOverride,
+                onForgetCachedAdapter = viewModel::forgetCachedAdapter
+            )
+        }
+
+        AppUiStyle.TACTICAL_MOTORSPORT -> {
+            LaunchedEffect(currentRoute) {
+                viewModel.setDiagnosticScreenVisible(currentRoute == ROUTE_DIAGNOSTICS)
+            }
+
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val useNavRail = maxWidth >= 680.dp
+
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    contentWindowInsets = WindowInsets.safeDrawing,
+                    snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+                    topBar = {
+                        CenterAlignedTopAppBar(
+                            title = {
+                                Text(
+                                    text = (detectedVehicle?.displayTitle ?: rigPrefs.rigNickname).uppercase(),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            actions = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    PhoneBatteryStatusIndicator(
+                                        battery = phoneBattery,
+                                        isNightMode = isNightModeActive,
+                                        modifier = Modifier.testTag("topbar_phone_battery")
+                                    )
+
+                                    IconButton(
+                                        onClick = { showUiStyleSheet = true },
+                                        modifier = Modifier
+                                            .minimumInteractiveComponentSize()
+                                            .testTag("topbar_ui_style_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.DashboardCustomize,
+                                            contentDescription = strings.cdSwitchUiStyle,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(21.dp)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = { showBluetoothSheet = true },
+                                        modifier = Modifier
+                                            .minimumInteractiveComponentSize()
+                                            .testTag("topbar_bluetooth_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (connectionStatus == ConnectionStatus.CONNECTED) {
+                                                Icons.Rounded.BluetoothConnected
+                                            } else {
+                                                Icons.Rounded.Bluetooth
+                                            },
+                                            contentDescription = stringResource(R.string.cd_connect_bluetooth),
+                                            tint = when {
+                                                isNightModeActive -> MaterialTheme.colorScheme.primary
+                                                connectionStatus == ConnectionStatus.CONNECTED -> LocalRacePalette.current.zone2
+                                                else -> LocalRacePalette.current.zone4
+                                            },
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                titleContentColor = MaterialTheme.colorScheme.onSurface
+                            )
                         )
                     },
-                    actions = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            PhoneBatteryStatusIndicator(
-                                battery = phoneBattery,
-                                isNightMode = isNightModeActive,
-                                modifier = Modifier.testTag("topbar_phone_battery")
-                            )
-
-                            IconButton(
-                                onClick = { showBluetoothSheet = true },
-                                modifier = Modifier
-                                    .minimumInteractiveComponentSize()
-                                    .testTag("topbar_bluetooth_button")
-                            ) {
-                                Icon(
-                                    imageVector = if (connectionStatus == ConnectionStatus.CONNECTED) {
-                                        Icons.Rounded.BluetoothConnected
-                                    } else {
-                                        Icons.Rounded.Bluetooth
-                                    },
-                                    contentDescription = stringResource(R.string.cd_connect_bluetooth),
-                                    tint = when {
-                                        isNightModeActive -> MaterialTheme.colorScheme.primary
-                                        connectionStatus == ConnectionStatus.CONNECTED -> LocalRacePalette.current.zone2
-                                        else -> LocalRacePalette.current.zone4
-                                    },
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface
-                    )
-                )
-            },
             bottomBar = {
                 if (!useNavRail) {
                     NavigationBar(
@@ -480,7 +655,10 @@ fun WranglerObdApp(
                             onTareInclinometer = viewModel::tareInclinometer,
                             onSaveRaceLayout = viewModel::saveRaceLayout,
                             onResetRaceLayout = viewModel::resetRaceLayout,
-                            onSetRaceLayoutLocked = viewModel::setRaceLayoutLocked
+                            onSetRaceLayoutLocked = viewModel::setRaceLayoutLocked,
+                            detectedVehicle = detectedVehicle,
+                            activeProfile = activeProfile,
+                            gpsState = gpsState
                         )
                     }
                     composable(ROUTE_DIAGNOSTICS) {
@@ -498,7 +676,8 @@ fun WranglerObdApp(
                             onTogglePause = viewModel::toggleDiagnosticScanPaused,
                             onReprobeUnsupported = viewModel::reprobeUnsupportedDiagnostics,
                             onOpenBluetoothSheet = { showBluetoothSheet = true },
-                            onDisconnect = viewModel::disconnectAdapter
+                            onDisconnect = viewModel::disconnectAdapter,
+                            detectedVehicle = detectedVehicle
                         )
                     }
                     composable(ROUTE_COCKPIT) {
@@ -512,7 +691,10 @@ fun WranglerObdApp(
                             rigPrefs = rigPrefs,
                             onOpenBluetoothSheet = { showBluetoothSheet = true },
                             onDisconnect = viewModel::disconnectAdapter,
-                            onTareInclinometer = viewModel::tareInclinometer
+                            onTareInclinometer = viewModel::tareInclinometer,
+                            detectedVehicle = detectedVehicle,
+                            activeProfile = activeProfile,
+                            gpsState = gpsState
                         )
                     }
                     composable(ROUTE_SCANNER) {
@@ -542,7 +724,9 @@ fun WranglerObdApp(
                             telemetry = telemetry,
                             rigPrefs = rigPrefs,
                             onSendCommand = viewModel::sendTerminalCommand,
-                            onOpenBluetoothSheet = { showBluetoothSheet = true }
+                            onOpenBluetoothSheet = { showBluetoothSheet = true },
+                            activeProfile = activeProfile,
+                            supportedMode01Pids = supportedMode01Pids
                         )
                     }
                     composable(ROUTE_GARAGE) {
@@ -571,12 +755,29 @@ fun WranglerObdApp(
                             onApplyTireRatioCalibration = viewModel::applyTireRatioCalibration,
                             onSetSpeedCalibrationFactor = { viewModel.setSpeedCalibrationFactor(it) },
                             onResetInclinometerTare = viewModel::resetInclinometerTare,
-                            onDeleteScanRecord = viewModel::deleteScanRecord
+                            onDeleteScanRecord = viewModel::deleteScanRecord,
+                            detectedVehicle = detectedVehicle,
+                            activeProfile = activeProfile,
+                            supportedMode01Pids = supportedMode01Pids,
+                            cachedBindings = cachedBindings,
+                            onSelectProfileOverride = viewModel::setManualProfileOverride,
+                            onForgetCachedAdapter = viewModel::forgetCachedAdapter,
+                            onSelectUiStyle = viewModel::setUiStyle
                         )
                     }
                 }
             }
         }
+            }
+        }
+    }
+
+    if (showUiStyleSheet) {
+        UiStylePickerSheet(
+            selectedStyle = rigPrefs.uiStyle,
+            onSelectStyle = viewModel::setUiStyle,
+            onDismiss = { showUiStyleSheet = false }
+        )
     }
 
     if (showBluetoothSheet) {
@@ -591,7 +792,8 @@ fun WranglerObdApp(
             onStartScan = viewModel::startBluetoothDiscovery,
             onStopScan = viewModel::stopBluetoothDiscovery,
             onSelectDevice = viewModel::connectAdapter,
-            onDismiss = { showBluetoothSheet = false }
+            onDismiss = { showBluetoothSheet = false },
+            cachedBindings = cachedBindings
         )
     }
 }

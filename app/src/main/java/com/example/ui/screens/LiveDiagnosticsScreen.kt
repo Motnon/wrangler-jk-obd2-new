@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.obd.BluetoothDeviceItem
 import com.example.obd.ConnectionStatus
+import com.example.obd.DetectedVehicle
 import com.example.obd.DiagnosticCategory
 import com.example.obd.DiagnosticReading
 import com.example.obd.DiagnosticReadingStatus
@@ -89,7 +90,8 @@ fun LiveDiagnosticsScreen(
     onReprobeUnsupported: () -> Unit,
     onOpenBluetoothSheet: () -> Unit,
     onDisconnect: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    detectedVehicle: DetectedVehicle? = null
 ) {
     var showSelectionView by rememberSaveable { mutableStateOf(appliedTests.isEmpty()) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -130,7 +132,8 @@ fun LiveDiagnosticsScreen(
                 vinInfo = vinInfo,
                 milOn = telemetry.milOn,
                 onConnectClick = onOpenBluetoothSheet,
-                onDisconnectClick = onDisconnect
+                onDisconnectClick = onDisconnect,
+                detectedVehicle = detectedVehicle
             )
 
             // Mode switcher: Select PIDs (Checkboxes) <-> Live Scan List

@@ -56,12 +56,17 @@ import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.ScanRecordEntity
 import com.example.obd.AppLanguage
+import com.example.obd.AppUiStyle
 import com.example.obd.AppVisualTheme
+import com.example.obd.CachedVehicleBinding
+import com.example.obd.DetectedVehicle
 import com.example.obd.JkEngineProfile
 import com.example.obd.LiveTelemetry
 import com.example.obd.NightModeSetting
 import com.example.obd.RigPreferences
 import com.example.obd.UnitSystem
+import com.example.obd.VehicleProfile
+import com.example.obd.VehicleProfileId
 import com.example.obd.VinInfo
 import com.example.obd.WranglerModel
 import com.example.sensors.GpsTelemetryState
@@ -69,6 +74,7 @@ import com.example.sensors.SolarSchedule
 import com.example.ui.components.DisplayAndNightModeCard
 import com.example.ui.components.GpsSpeedCalibrationCard
 import com.example.ui.components.LanguageSelectionCard
+import com.example.ui.components.UiStyleSelectorCard
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.FaultCrimson
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -106,7 +112,14 @@ fun GarageScreen(
     onSetSpeedCalibrationFactor: (Float) -> Unit,
     onResetInclinometerTare: () -> Unit,
     onDeleteScanRecord: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    detectedVehicle: DetectedVehicle? = null,
+    activeProfile: VehicleProfile? = null,
+    supportedMode01Pids: Set<Int> = emptySet(),
+    cachedBindings: Map<String, CachedVehicleBinding> = emptyMap(),
+    onSelectProfileOverride: (String) -> Unit = {},
+    onForgetCachedAdapter: (String) -> Unit = {},
+    onSelectUiStyle: (AppUiStyle) -> Unit = {}
 ) {
     val strings = LocalAppStrings.current
     var nicknameInput by remember(rigPrefs.rigNickname) { mutableStateOf(rigPrefs.rigNickname) }
@@ -201,6 +214,165 @@ fun GarageScreen(
                     selectedLanguage = rigPrefs.appLanguage,
                     onSelectLanguage = onSelectAppLanguage
                 )
+
+                // Automatic Vehicle Detection & Profile Override Card
+                Surface(
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.DirectionsCar,
+                                contentDescription = null,
+                                tint = TrailSage
+                            )
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Text(
+                                text = strings.vehicleProfileHeader,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Text(
+                            text = strings.vehicleProfileSubtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            VehicleProfileId.allManualIds.forEach { id ->
+                                FilterChip(
+                                    selected = rigPrefs.selectedProfileOverrideId == id,
+                                    onClick = { onSelectProfileOverride(id) },
+                                    label = { Text(strings.profileOverrideLabel(id)) },
+                                    modifier = Modifier.testTag("profile_override_chip_$id")
+                                )
+                            }
+                        }
+
+                        if (detectedVehicle != null) {
+                            Surface(
+                                shape = MaterialTheme.shapes.medium,
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, TrailSage.copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${strings.detectedVehicleLabel}: ${detectedVehicle.displayTitle}",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = TrailSage,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Surface(
+                                            shape = MaterialTheme.shapes.extraSmall,
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Text(
+                                                text = detectedVehicle.detectionSource.badge,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    detectedVehicle.vin?.let { vin ->
+                                        Text(
+                                            text = "${strings.vinPrefix}: $vin",
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    detectedVehicle.protocolName?.let { proto ->
+                                        Text(
+                                            text = "${strings.activeProtocolLabel}: $proto",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (supportedMode01Pids.isNotEmpty()) {
+                                        Text(
+                                            text = String.format(
+                                                Locale.US,
+                                                strings.supportedPidsCountFormat,
+                                                supportedMode01Pids.size
+                                            ),
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = OverlandAmber
+                                        )
+                                    }
+                                    activeProfile?.let { prof ->
+                                        Text(
+                                            text = "Profile: ${prof.name}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (cachedBindings.isNotEmpty()) {
+                            Text(
+                                text = strings.cachedAdaptersHeader,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            cachedBindings.values.forEach { binding ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${binding.deviceName} -> ${binding.displayTitle}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "${binding.deviceAddress}${binding.vin?.let { " • $it" } ?: ""}",
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { onForgetCachedAdapter(binding.deviceAddress) },
+                                        modifier = Modifier.minimumInteractiveComponentSize()
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Delete,
+                                            contentDescription = strings.forgetCachedCd,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // JK / JL Rig & Powertrain Configuration
                 Surface(
@@ -325,6 +497,11 @@ fun GarageScreen(
                     }
                 }
 
+                UiStyleSelectorCard(
+                    selectedStyle = rigPrefs.uiStyle,
+                    onSelectStyle = onSelectUiStyle
+                )
+
                 DisplayAndNightModeCard(
                     rigPrefs = rigPrefs,
                     solarSchedule = solarSchedule,
@@ -346,7 +523,8 @@ fun GarageScreen(
                     onStopGpsCalibration = onStopGpsCalibration,
                     onApplyLiveGpsCalibration = onApplyLiveGpsCalibration,
                     onApplyTireRatioCalibration = onApplyTireRatioCalibration,
-                    onSetCalibrationFactor = onSetSpeedCalibrationFactor
+                    onSetCalibrationFactor = onSetSpeedCalibrationFactor,
+                    activeProfile = activeProfile
                 )
 
                 // Units & Alert Thresholds

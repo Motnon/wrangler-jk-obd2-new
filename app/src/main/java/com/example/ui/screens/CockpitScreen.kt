@@ -31,13 +31,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.obd.BluetoothDeviceItem
 import com.example.obd.ConnectionStatus
+import com.example.obd.DetectedVehicle
 import com.example.obd.JkEngineProfile
 import com.example.obd.LiveTelemetry
+import com.example.obd.RealSpeedSource
 import com.example.obd.RigPreferences
 import com.example.obd.TrailSensorState
 import com.example.obd.UnitSystem
+import com.example.obd.VehicleProfile
+import com.example.obd.VehicleProfileId
 import com.example.obd.VinInfo
-import com.example.obd.applyCalibratedSpeedKph
+import com.example.obd.resolveRealSpeed
+import com.example.sensors.GpsTelemetryState
 import com.example.ui.components.CircularArcGauge
 import com.example.ui.components.EcuStatusBanner
 import com.example.ui.components.TrailInclinometerCard
@@ -64,22 +69,40 @@ fun CockpitScreen(
     onOpenBluetoothSheet: () -> Unit,
     onDisconnect: () -> Unit,
     onTareInclinometer: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    detectedVehicle: DetectedVehicle? = null,
+    activeProfile: VehicleProfile? = null,
+    gpsState: GpsTelemetryState = GpsTelemetryState()
 ) {
     val strings = LocalAppStrings.current
     val isImperialMap = rigPrefs.unitSystem == UnitSystem.IMPERIAL
-    val redlineRpm = rigPrefs.engineProfile.redlineRpm
-    val maxRpmScale = rigPrefs.engineProfile.maxRpmScale
+    val useProfileRpm = activeProfile != null &&
+        activeProfile.id != VehicleProfileId.JEEP_JK &&
+        activeProfile.id != VehicleProfileId.JEEP_JL
+    val redlineRpm = if (useProfileRpm) activeProfile!!.redlineRpm else rigPrefs.engineProfile.redlineRpm
+    val maxRpmScale = if (useProfileRpm) activeProfile!!.maxRpmScale else rigPrefs.engineProfile.maxRpmScale
 
     // Coolant temp is always Celsius (°C)
     val coolantDisplayValue: Float? = telemetry.coolantCelsius?.toFloat()
-    val coolantThresholdDisplay: Float = rigPrefs.coolantWarnCelsius.toFloat()
+    val coolantThresholdDisplay: Float = (activeProfile?.coolantWarnC ?: rigPrefs.coolantWarnCelsius).toFloat()
     val coolantMin = 25f
     val coolantMax = 130f
 
-    // Speed is always KPH (with GPS tire calibration factor applied)
-    val calibratedSpeedKph = applyCalibratedSpeedKph(telemetry.speedKmh, rigPrefs.speedCalibrationFactor)
+    // Speed is always KPH (OBD 010D + tire/GPS calibration + GPS live fallback)
+    val resolvedSpeed = resolveRealSpeed(
+        obdRawSpeedKmh = telemetry.speedKmh,
+        gpsSpeedKph = gpsState.gpsSpeedKph,
+        gpsAccuracyMeters = gpsState.accuracyMeters,
+        rigPrefs = rigPrefs,
+        activeProfile = activeProfile
+    )
+    val calibratedSpeedKph = resolvedSpeed.kph
     val speedDisplayText = calibratedSpeedKph?.toString() ?: "--"
+    val speedUnitBadge = when (resolvedSpeed.source) {
+        RealSpeedSource.GPS_LIVE -> strings.gpsSpeedBadge
+        RealSpeedSource.OBD_CALIBRATED -> strings.calSpeedBadge
+        RealSpeedSource.OBD_LIVE, RealSpeedSource.NONE -> strings.speedUnitKph
+    }
 
     val intakeDisplayText = telemetry.intakeAirCelsius?.toString() ?: "--"
 
@@ -113,7 +136,8 @@ fun CockpitScreen(
                         vinInfo = vinInfo,
                         milOn = telemetry.milOn,
                         onConnectClick = onOpenBluetoothSheet,
-                        onDisconnectClick = onDisconnect
+                        onDisconnectClick = onDisconnect,
+                        detectedVehicle = detectedVehicle
                     )
 
                     // Primary Instrument Cluster (RPM & Coolant)
@@ -159,7 +183,7 @@ fun CockpitScreen(
                                     batteryText = batteryText,
                                     isLowBattery = isLowBattery,
                                     speedText = speedDisplayText,
-                                    speedUnit = strings.speedUnitKph,
+                                    speedUnit = speedUnitBadge,
                                     intakeText = intakeDisplayText,
                                     tempUnit = "°C",
                                     loadText = loadText,
@@ -180,7 +204,7 @@ fun CockpitScreen(
                             batteryText = batteryText,
                             isLowBattery = isLowBattery,
                             speedText = speedDisplayText,
-                            speedUnit = strings.speedUnitKph,
+                            speedUnit = speedUnitBadge,
                             intakeText = intakeDisplayText,
                             tempUnit = "°C",
                             loadText = loadText,

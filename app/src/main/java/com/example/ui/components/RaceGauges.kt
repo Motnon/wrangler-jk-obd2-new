@@ -176,7 +176,7 @@ fun RaceShiftLightBar(
                     val alpha = when {
                         isShiftAlert -> flashPhase
                         lit -> 0.98f
-                        isLightDay -> 0.32f
+                        isLightDay -> 0.42f
                         else -> 0.16f
                     }
                     val x = i * (ledWidth + gap)
@@ -213,7 +213,8 @@ fun RaceSpeedometerDial(
     maxSpeedScale: Float,
     speedWarningThreshold: Float,
     majorTickCount: Int,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    speedBadgeText: String? = null
 ) {
     val palette = LocalRacePalette.current
     val strings = LocalAppStrings.current
@@ -273,7 +274,7 @@ fun RaceSpeedometerDial(
                     color = palette.zone1
                 )
                 Text(
-                    text = if (speedValue != null) strings.liveSpeedFormat else speedUnit,
+                    text = speedBadgeText ?: if (speedValue != null) strings.liveSpeedFormat else speedUnit,
                     fontFamily = JetBrainsMonoFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
@@ -350,8 +351,8 @@ fun RaceSpeedometerDial(
                         val zEnd = bounds.second.coerceIn(zStart, 1f)
                         if (zEnd > zStart) {
                             val trackAlpha = when {
-                                isLightDay && zStart >= warnFraction -> 0.48f
-                                isLightDay -> 0.32f
+                                isLightDay && zStart >= warnFraction -> 0.60f
+                                isLightDay -> 0.44f
                                 zStart >= warnFraction -> 0.34f
                                 else -> 0.18f
                             }
@@ -592,7 +593,7 @@ fun RaceSegmentedBarGauge(
                         val lit = fraction != null && idxFromBottom < activeCount
                         val alpha = when {
                             lit -> 0.98f
-                            isLightDay -> 0.30f
+                            isLightDay -> 0.40f
                             else -> 0.16f
                         }
                         val y = size.height - ((idxFromBottom + 1) * segHeight + idxFromBottom * gap)

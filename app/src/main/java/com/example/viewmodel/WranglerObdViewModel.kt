@@ -8,10 +8,14 @@ import com.example.data.JkObdDatabase
 import com.example.data.RigPreferencesRepository
 import com.example.data.ScanHistoryRepository
 import com.example.data.ScanRecordEntity
+import com.example.data.VehicleCacheRepository
 import com.example.obd.AppLanguage
+import com.example.obd.AppUiStyle
 import com.example.obd.AppVisualTheme
 import com.example.obd.BluetoothDeviceItem
+import com.example.obd.CachedVehicleBinding
 import com.example.obd.ConnectionStatus
+import com.example.obd.DetectedVehicle
 import com.example.obd.DiagnosticReading
 import com.example.obd.DiagnosticTestId
 import com.example.obd.DtcCodeInfo
@@ -27,9 +31,12 @@ import com.example.obd.RigPreferences
 import com.example.obd.TerminalEntry
 import com.example.obd.TrailSensorState
 import com.example.obd.UnitSystem
+import com.example.obd.VehicleProfile
+import com.example.obd.VehicleProfileId
 import com.example.obd.VinInfo
 import com.example.obd.WranglerDtcCatalog
 import com.example.obd.WranglerModel
+import com.example.obd.effectiveSpeedFactor
 import com.example.obd.parseTireSizeInches
 import com.example.sensors.GpsSpeedManager
 import com.example.sensors.GpsTelemetryState
@@ -51,7 +58,8 @@ import java.util.Locale
 
 class WranglerObdViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val bluetoothManager = BluetoothManager(application.applicationContext)
+    private val vehicleCacheRepo = VehicleCacheRepository(application.applicationContext)
+    private val bluetoothManager = BluetoothManager(application.applicationContext, vehicleCacheRepo)
     private val sensorManager = TrailSensorManager(application.applicationContext)
     private val batteryMonitor = PhoneBatteryMonitor(application.applicationContext)
     private val gpsSpeedManager = GpsSpeedManager(application.applicationContext)
@@ -70,6 +78,9 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     val activeDtcs: StateFlow<List<String>> = bluetoothManager.activeDtcs
     val pendingDtcs: StateFlow<List<String>> = bluetoothManager.pendingDtcs
     val vinInfo: StateFlow<VinInfo?> = bluetoothManager.vinInfo
+    val detectedVehicle: StateFlow<DetectedVehicle?> = bluetoothManager.detectedVehicle
+    val activeProfile: StateFlow<VehicleProfile> = bluetoothManager.activeProfile
+    val supportedMode01Pids: StateFlow<Set<Int>> = bluetoothManager.supportedMode01Pids
     val terminalLogs: StateFlow<List<TerminalEntry>> = bluetoothManager.terminalLogs
     val sensorState: StateFlow<TrailSensorState> = sensorManager.sensorState
     val phoneBatteryState: StateFlow<PhoneBatteryState> = batteryMonitor.batteryState
@@ -78,6 +89,13 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     val diagnosticReadings: StateFlow<Map<DiagnosticTestId, DiagnosticReading>> = bluetoothManager.diagnosticReadings
     val isDiagnosticScanPaused: StateFlow<Boolean> = bluetoothManager.isDiagnosticScanPaused
     val diagnosticCycleCount: StateFlow<Long> = bluetoothManager.diagnosticCycleCount
+
+    val cachedBindings: StateFlow<Map<String, CachedVehicleBinding>> = vehicleCacheRepo.bindingsFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyMap()
+        )
 
     val rigPreferences: StateFlow<RigPreferences> = rigPrefsRepo.preferencesFlow
         .stateIn(
@@ -89,14 +107,21 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     init {
         viewModelScope.launch {
             rigPrefsRepo.preferencesFlow.collect { prefs ->
-                bluetoothManager.updateDiagnosticSettings(
-                    speedFactor = prefs.speedCalibrationFactor,
-                    coolantWarnC = prefs.coolantWarnCelsius
-                )
+                bluetoothManager.setManualProfileOverride(prefs.selectedProfileOverrideId)
                 val decoded = DiagnosticTestId.decodeSet(prefs.selectedDiagnosticTestsCsv)
                 if (bluetoothManager.appliedDiagnosticTests.value != decoded) {
                     bluetoothManager.setAppliedDiagnosticTests(decoded, forceReprobe = false)
                 }
+            }
+        }
+        viewModelScope.launch {
+            combine(rigPrefsRepo.preferencesFlow, activeProfile) { prefs, profile ->
+                effectiveSpeedFactor(prefs, profile) to prefs.coolantWarnCelsius
+            }.collect { (factor, coolantWarnC) ->
+                bluetoothManager.updateDiagnosticSettings(
+                    speedFactor = factor,
+                    coolantWarnC = coolantWarnC
+                )
             }
         }
         viewModelScope.launch {
@@ -189,22 +214,25 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     fun startSensors() {
         sensorManager.start()
         batteryMonitor.start()
-        gpsSpeedManager.refreshLastKnownCoordinates()
+        gpsSpeedManager.startPassiveSpeedUpdates()
     }
 
     fun stopSensors() {
         sensorManager.stop()
         batteryMonitor.stop()
-        gpsSpeedManager.stopCalibrationUpdates()
+        gpsSpeedManager.stopAllUpdates()
     }
 
     fun hasFineLocationPermission(): Boolean = gpsSpeedManager.hasFineLocationPermission()
 
     fun onLocationPermissionResult(granted: Boolean, startCalibrationAfterGrant: Boolean = true) {
         gpsSpeedManager.refreshLastKnownCoordinates()
-        if (granted && startCalibrationAfterGrant) {
-            gpsSpeedManager.startCalibrationUpdates()
-        } else if (!granted) {
+        if (granted) {
+            gpsSpeedManager.startPassiveSpeedUpdates()
+            if (startCalibrationAfterGrant) {
+                gpsSpeedManager.startCalibrationUpdates()
+            }
+        } else {
             _uiFeedbackMessage.value = msg(
                 en = "Fine location permission is needed for live GPS speed calibration.",
                 he = "נדרשת הרשאת מיקום מדויק לכיול מהירות GPS בזמן אמת."
@@ -337,8 +365,8 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         val active = activeDtcs.value
         val pending = pendingDtcs.value
         val adapter = connectedDevice.value?.name ?: "Manual / Offline Snapshot"
-        val vin = vinInfo.value?.vin ?: "Not Read"
-        val engine = rigPreferences.value.engineProfile.label
+        val vin = detectedVehicle.value?.vin ?: vinInfo.value?.vin ?: "Not Read"
+        val engine = detectedVehicle.value?.displayTitle ?: rigPreferences.value.engineProfile.label
 
         viewModelScope.launch {
             scanHistoryRepo.saveScan(
@@ -416,6 +444,44 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
             _uiFeedbackMessage.value = msg(
                 en = "Switched vehicle profile to ${model.displayName} (${model.years}).",
                 he = "פרופיל הרכב הוחלף ל-${model.displayName} (${model.years})."
+            )
+        }
+    }
+
+    fun setManualProfileOverride(profileId: String) {
+        viewModelScope.launch {
+            rigPrefsRepo.setSelectedProfileOverrideId(profileId)
+            bluetoothManager.setManualProfileOverride(profileId)
+            when (profileId) {
+                VehicleProfileId.JEEP_JK -> {
+                    rigPrefsRepo.setWranglerModel(WranglerModel.JK)
+                    _selectedDtcModelFilter.value = WranglerModel.JK
+                }
+                VehicleProfileId.JEEP_JL -> {
+                    rigPrefsRepo.setWranglerModel(WranglerModel.JL)
+                    _selectedDtcModelFilter.value = WranglerModel.JL
+                }
+            }
+            val label = when (profileId) {
+                VehicleProfileId.AUTO -> msg("Auto-Detect (VIN / Protocol)", "זיהוי אוטומטי (VIN / פרוטוקול)")
+                VehicleProfileId.JEEP_JK -> "Jeep Wrangler JK"
+                VehicleProfileId.JEEP_JL -> "Jeep Wrangler JL"
+                VehicleProfileId.BMW -> "BMW E/F/G & MINI"
+                else -> "Universal OBD-II"
+            }
+            _uiFeedbackMessage.value = msg(
+                en = "Active ECU profile set to $label.",
+                he = "פרופיל הרכב הפעיל הוגדר ל-$label."
+            )
+        }
+    }
+
+    fun forgetCachedAdapter(deviceAddress: String) {
+        viewModelScope.launch {
+            vehicleCacheRepo.clearBinding(deviceAddress)
+            _uiFeedbackMessage.value = msg(
+                en = "Cleared cached vehicle profile for $deviceAddress.",
+                he = "הפרופיל השמור עבור המתאם $deviceAddress נמחק."
             )
         }
     }
@@ -506,6 +572,26 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun setUiStyle(uiStyle: AppUiStyle) {
+        viewModelScope.launch {
+            rigPrefsRepo.setUiStyle(uiStyle)
+            _uiFeedbackMessage.value = when (uiStyle) {
+                AppUiStyle.TACTICAL_MOTORSPORT -> msg(
+                    en = "Switched GUI to Tactical Motorsport",
+                    he = "ממשק המשתמש הוחלף לסגנון מרוץ טקטי"
+                )
+                AppUiStyle.AVIONICS_HUD -> msg(
+                    en = "Switched GUI to Glass Aero HUD",
+                    he = "ממשק המשתמש הוחלף לתצוגה עילית HUD"
+                )
+                AppUiStyle.AUTOMOTIVE_INFOTAINMENT -> msg(
+                    en = "Switched GUI to Drive Split-Deck",
+                    he = "ממשק המשתמש הוחלף למסך רכב מפוצל"
+                )
+            }
+        }
+    }
+
     fun applyDiagnosticTests(selected: Set<DiagnosticTestId>) {
         val csv = DiagnosticTestId.encodeSet(selected)
         bluetoothManager.setAppliedDiagnosticTests(selected, forceReprobe = true)
@@ -548,7 +634,7 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         super.onCleared()
         sensorManager.stop()
         batteryMonitor.stop()
-        gpsSpeedManager.stopCalibrationUpdates()
+        gpsSpeedManager.stopAllUpdates()
         bluetoothManager.release()
     }
 }

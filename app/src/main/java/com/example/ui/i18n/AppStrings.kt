@@ -2,6 +2,7 @@ package com.example.ui.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.example.obd.AppLanguage
+import com.example.obd.AppUiStyle
 import com.example.obd.AppVisualTheme
 import com.example.obd.JkEngineProfile
 import com.example.obd.JkSubsystem
@@ -23,6 +24,8 @@ data class AppStrings(
     val obdSpeedLabel: String,
     val speedUnitKph: String,
     val liveSpeedFormat: String,
+    val gpsSpeedBadge: String,
+    val calSpeedBadge: String,
     val fuelTitle: String,
     val coolantTitle: String,
     val throttleTitle: String,
@@ -164,8 +167,106 @@ data class AppStrings(
     val btPairedButton: String,
     val btDisabledWarning: String,
     val btNoAdaptersTitle: String,
-    val btNoAdaptersBody: String
+    val btNoAdaptersBody: String,
+    // Multi-Vehicle Auto-Detection & Profile Override
+    val vehicleProfileHeader: String,
+    val vehicleProfileSubtitle: String,
+    val detectedVehicleLabel: String,
+    val activeProtocolLabel: String,
+    val supportedPidsCountFormat: String,
+    val cachedAdaptersHeader: String,
+    val forgetCachedCd: String,
+    val profileMonitorFormat: String,
+    // GUI Architecture Styles (3 Options)
+    val uiStyleCardHeader: String,
+    val uiStyleCardSubtitle: String,
+    val uiStyleSheetTitle: String,
+    val uiStyleSheetSubtitle: String,
+    val cdSwitchUiStyle: String,
+    val uiStyleActiveBadge: String,
+    // Option 2: Avionics HUD
+    val hudNavHud: String,
+    val hudNavPids: String,
+    val hudNavFaults: String,
+    val hudNavTerm: String,
+    val hudNavRig: String,
+    val hudHorizonLabel: String,
+    val hudFlightNominal: String,
+    val hudFlightAlert: String,
+    val hudLaserRpm: String,
+    val hudOpticalVel: String,
+    // Option 3: Automotive Infotainment Split-Deck
+    val driveNavHome: String,
+    val driveNavRace: String,
+    val driveNavPids: String,
+    val driveNavFaults: String,
+    val driveNavTerm: String,
+    val driveNavSetup: String,
+    val driveStyleShort: String,
+    val driveThermalsTitle: String,
+    val driveElectricalTitle: String,
+    val driveInclinometerTitle: String,
+    val driveHealthNominal: String,
+    val driveHealthAttention: String,
+    val driveOpenRaceCluster: String,
+    val driveOpenDiagnostics: String,
+    val driveOpenScanner: String
 ) {
+    fun uiStyleTitle(style: AppUiStyle): String = when (language) {
+        AppLanguage.ENGLISH -> when (style) {
+            AppUiStyle.TACTICAL_MOTORSPORT -> "Tactical Motorsport"
+            AppUiStyle.AVIONICS_HUD -> "Glass Aero HUD"
+            AppUiStyle.AUTOMOTIVE_INFOTAINMENT -> "Drive Split-Deck"
+        }
+        AppLanguage.HEBREW -> when (style) {
+            AppUiStyle.TACTICAL_MOTORSPORT -> "מרוץ טקטי (קלאסי)"
+            AppUiStyle.AVIONICS_HUD -> "תצוגה עילית HUD"
+            AppUiStyle.AUTOMOTIVE_INFOTAINMENT -> "מסך רכב מפוצל"
+        }
+    }
+
+    fun uiStyleSubtitle(style: AppUiStyle): String = when (language) {
+        AppLanguage.ENGLISH -> when (style) {
+            AppUiStyle.TACTICAL_MOTORSPORT -> "6-tab cockpit bar with draggable, resizable analog & digital race gauges"
+            AppUiStyle.AVIONICS_HUD -> "Fighter-jet HUD reticle, laser RPM tape, chamfered frames & floating glass dock"
+            AppUiStyle.AUTOMOTIVE_INFOTAINMENT -> "CarPlay-style side rail dock with oversized Bento telemetry split tiles"
+        }
+        AppLanguage.HEBREW -> when (style) {
+            AppUiStyle.TACTICAL_MOTORSPORT -> "סרגל 6 לשוניות עם שעוני מרוץ הניתנים לגרירה ושינוי גודל"
+            AppUiStyle.AVIONICS_HUD -> "כוונת תצוגה עילית, מד סל\"ד לייזר, מסגרות קטומות וסרגל צף"
+            AppUiStyle.AUTOMOTIVE_INFOTAINMENT -> "סרגל צד קבוע בסגנון מולטימדיה ברכב עם אריחי בנטו גדולים"
+        }
+    }
+
+    fun uiStyleBadge(style: AppUiStyle): String = when (language) {
+        AppLanguage.ENGLISH -> when (style) {
+            AppUiStyle.TACTICAL_MOTORSPORT -> "OPTION 1 • CLASSIC"
+            AppUiStyle.AVIONICS_HUD -> "OPTION 2 • AERO HUD"
+            AppUiStyle.AUTOMOTIVE_INFOTAINMENT -> "OPTION 3 • CAR DECK"
+        }
+        AppLanguage.HEBREW -> when (style) {
+            AppUiStyle.TACTICAL_MOTORSPORT -> "אפשרות 1 • קלאסי"
+            AppUiStyle.AVIONICS_HUD -> "אפשרות 2 • HUD"
+            AppUiStyle.AUTOMOTIVE_INFOTAINMENT -> "אפשרות 3 • מולטימדיה"
+        }
+    }
+
+    fun profileOverrideLabel(profileId: String): String = when (language) {
+        AppLanguage.ENGLISH -> when (profileId) {
+            "auto" -> "Auto-Detect (VIN)"
+            "jeep_jk" -> "Jeep Wrangler JK"
+            "jeep_jl" -> "Jeep Wrangler JL"
+            "bmw" -> "BMW E/F/G & MINI"
+            else -> "Universal OBD-II"
+        }
+        AppLanguage.HEBREW -> when (profileId) {
+            "auto" -> "זיהוי אוטומטי (VIN)"
+            "jeep_jk" -> "ג'יפ רנגלר JK"
+            "jeep_jl" -> "ג'יפ רנגלר JL"
+            "bmw" -> "BMW סדרה E/F/G ו-MINI"
+            else -> "OBD-II אוניברסלי"
+        }
+    }
     fun modelChipLabel(model: WranglerModel): String = when (language) {
         AppLanguage.ENGLISH -> "${model.displayName} (${model.years})"
         AppLanguage.HEBREW -> when (model) {
@@ -252,6 +353,8 @@ data class AppStrings(
             obdSpeedLabel = "OBD SPEED",
             speedUnitKph = "KPH",
             liveSpeedFormat = "LIVE KPH",
+            gpsSpeedBadge = "GPS KPH",
+            calSpeedBadge = "CAL KPH",
             fuelTitle = "FUEL",
             coolantTitle = "TEMP",
             throttleTitle = "THROTTLE (TPS)",
@@ -376,10 +479,10 @@ data class AppStrings(
             activeDtcPrefix = "Active: %s",
             pendingDtcPrefix = "Pending: %s",
             cleanScanZeroDtcs = "Clean Scan (0 DTCs)",
-            btSheetTitle = "Pair ELM327 / OBD-II Adapter",
-            btSheetSubtitle = "Supports Bluetooth Classic SPP & BLE (OBDLink, Veepeak, Vgate)",
+            btSheetTitle = "Pair Vgate iCar Pro / OBD-II",
+            btSheetSubtitle = "Dual-mode SPP (ANDROID-VLINK) & BLE 4.0 (IOS-VLINK) — All OBD-II cars",
             btPermRequiredTitle = "Bluetooth Permissions Required",
-            btPermRequiredBody = "Grant BLUETOOTH_CONNECT and BLUETOOTH_SCAN so Wrangler OBD can discover and link to your ELM327 adapter.",
+            btPermRequiredBody = "Grant BLUETOOTH_CONNECT and BLUETOOTH_SCAN so the app can discover and link to your Vgate iCar Pro / ELM327 adapter.",
             grantAccess = "Grant Access",
             settingsButton = "Settings",
             btScanningStop = "Scanning… Tap to Stop",
@@ -387,7 +490,46 @@ data class AppStrings(
             btPairedButton = "Paired",
             btDisabledWarning = "Bluetooth appears disabled in system settings. Enable Bluetooth to connect.",
             btNoAdaptersTitle = "No OBD-II adapters found yet",
-            btNoAdaptersBody = "Plug your ELM327 dongle into the JK/JL OBD-II port under the driver dash, turn ignition to RUN, and tap Scan."
+            btNoAdaptersBody = "Plug your Vgate iCar Pro (ANDROID-VLINK / IOS-VLINK) or ELM327 dongle into the OBD-II port, turn ignition ON, and tap Scan.",
+            vehicleProfileHeader = "VEHICLE AUTO-DETECTION & PROFILE",
+            vehicleProfileSubtitle = "Auto-detects make, model & year via ATSP0 + 0902 / 22F190 / 0904, or force a manual profile.",
+            detectedVehicleLabel = "Detected Vehicle",
+            activeProtocolLabel = "Active Protocol",
+            supportedPidsCountFormat = "ECU Bitmask: %d supported Mode 01 PIDs",
+            cachedAdaptersHeader = "CACHED ADAPTER PROFILES",
+            forgetCachedCd = "Forget cached vehicle binding",
+            profileMonitorFormat = "%s • SUPPORTED PID MONITOR",
+            uiStyleCardHeader = "GUI INTERFACE LAYOUT",
+            uiStyleCardSubtitle = "Switch between 3 completely different cockpit architectures",
+            uiStyleSheetTitle = "Choose GUI Experience",
+            uiStyleSheetSubtitle = "Each option reshapes navigation, layout geometry, and live gauge presentation.",
+            cdSwitchUiStyle = "Switch GUI layout style",
+            uiStyleActiveBadge = "ACTIVE",
+            hudNavHud = "HUD",
+            hudNavPids = "PIDS",
+            hudNavFaults = "FAULTS",
+            hudNavTerm = "TERM",
+            hudNavRig = "RIG",
+            hudHorizonLabel = "ATTITUDE HORIZON",
+            hudFlightNominal = "SYS NOMINAL",
+            hudFlightAlert = "FAULT / MIL",
+            hudLaserRpm = "RPM TAPE",
+            hudOpticalVel = "OPTICAL VELOCITY",
+            driveNavHome = "Home",
+            driveNavRace = "Race",
+            driveNavPids = "PIDs",
+            driveNavFaults = "DTCs",
+            driveNavTerm = "Term",
+            driveNavSetup = "Setup",
+            driveStyleShort = "GUI",
+            driveThermalsTitle = "THERMALS",
+            driveElectricalTitle = "POWER & FUEL",
+            driveInclinometerTitle = "TRAIL TILT",
+            driveHealthNominal = "ALL SYSTEMS READY",
+            driveHealthAttention = "ECU ATTENTION",
+            driveOpenRaceCluster = "Custom Race Gauges",
+            driveOpenDiagnostics = "50-PID Monitor",
+            driveOpenScanner = "Fault Scanner"
         )
 
         val Hebrew = AppStrings(
@@ -402,6 +544,8 @@ data class AppStrings(
             obdSpeedLabel = "מהירות OBD",
             speedUnitKph = "קמ\"ש",
             liveSpeedFormat = "חי קמ\"ש",
+            gpsSpeedBadge = "GPS קמ\"ש",
+            calSpeedBadge = "מכויל קמ\"ש",
             fuelTitle = "דלק",
             coolantTitle = "חום",
             throttleTitle = "מצערת (TPS)",
@@ -526,10 +670,10 @@ data class AppStrings(
             activeDtcPrefix = "פעיל: %s",
             pendingDtcPrefix = "ממתין: %s",
             cleanScanZeroDtcs = "סריקה נקייה (0 תקלות)",
-            btSheetTitle = "צימוד מתאם ELM327 / OBD-II",
-            btSheetSubtitle = "תומך Bluetooth Classic SPP ו-BLE (OBDLink, Veepeak, Vgate)",
+            btSheetTitle = "צימוד Vgate iCar Pro / מתאם OBD-II",
+            btSheetSubtitle = "תומך SPP (ANDROID-VLINK) ו-BLE 4.0 (IOS-VLINK) — לכל רכב OBD-II",
             btPermRequiredTitle = "נדרשות הרשאות בלוטות'",
-            btPermRequiredBody = "אשר BLUETOOTH_CONNECT ו-BLUETOOTH_SCAN כדי לאתר ולהתחבר למתאם ELM327.",
+            btPermRequiredBody = "אשר BLUETOOTH_CONNECT ו-BLUETOOTH_SCAN כדי לאתר ולהתחבר למתאם Vgate iCar Pro / ELM327.",
             grantAccess = "אשר גישה",
             settingsButton = "הגדרות",
             btScanningStop = "סורק… הקש לעצירה",
@@ -537,7 +681,46 @@ data class AppStrings(
             btPairedButton = "מצומדים",
             btDisabledWarning = "נראה שהבלוטות' כבוי בהגדרות המכשיר. הפעל בלוטות' להתחברות.",
             btNoAdaptersTitle = "לא נמצאו עדיין מתאמי OBD-II",
-            btNoAdaptersBody = "חבר את מתאם ה-ELM327 לשקע OBD-II מתחת להגה, סובב סוויץ' ל-RUN והקש סרוק."
+            btNoAdaptersBody = "חבר את מתאם ה-Vgate iCar Pro (ANDROID-VLINK / IOS-VLINK) או ELM327 לשקע ה-OBD-II, סובב סוויץ' ל-ON והקש סרוק.",
+            vehicleProfileHeader = "זיהוי רכב אוטומטי ופרופיל ECU",
+            vehicleProfileSubtitle = "מזהה יצרן, דגם ושנה אוטומטית (ATSP0 + 0902 / 22F190 / 0904), או בחר פרופיל ידני.",
+            detectedVehicleLabel = "רכב שזוהה",
+            activeProtocolLabel = "פרוטוקול פעיל",
+            supportedPidsCountFormat = "מיפוי ECU: %d חיישני Mode 01 נתמכים",
+            cachedAdaptersHeader = "מתאמים שמורים במטמון",
+            forgetCachedCd = "מחק פרופיל רכב שמור",
+            profileMonitorFormat = "%s • מוניטור חיישנים נתמכים",
+            uiStyleCardHeader = "סגנון ממשק ועיצוב GUI",
+            uiStyleCardSubtitle = "בחר בין 3 ממשקים שונים לחלוטין לתא הנהג",
+            uiStyleSheetTitle = "בחר סגנון ממשק (GUI)",
+            uiStyleSheetSubtitle = "כל אפשרות משנה לחלוטין את הניווט, המבנה הגרפי ותצוגת השעונים.",
+            cdSwitchUiStyle = "החלף סגנון ממשק",
+            uiStyleActiveBadge = "פעיל",
+            hudNavHud = "HUD",
+            hudNavPids = "חיישנים",
+            hudNavFaults = "תקלות",
+            hudNavTerm = "מסוף",
+            hudNavRig = "הגדרות",
+            hudHorizonLabel = "אופק מלאכותי",
+            hudFlightNominal = "מערכות תקינות",
+            hudFlightAlert = "התראה / MIL",
+            hudLaserRpm = "סל\"ד לייזר",
+            hudOpticalVel = "מהירות אופטית",
+            driveNavHome = "ראשי",
+            driveNavRace = "מרוץ",
+            driveNavPids = "חיישנים",
+            driveNavFaults = "תקלות",
+            driveNavTerm = "מסוף",
+            driveNavSetup = "הגדרות",
+            driveStyleShort = "עיצוב",
+            driveThermalsTitle = "טמפרטורות",
+            driveElectricalTitle = "חשמל ודלק",
+            driveInclinometerTitle = "שיפוע שטח",
+            driveHealthNominal = "מערכות תקינות",
+            driveHealthAttention = "נדרשת בדיקת ECU",
+            driveOpenRaceCluster = "שעוני מרוץ",
+            driveOpenDiagnostics = "סריקת 50 PID",
+            driveOpenScanner = "סורק תקלות"
         )
 
         fun forLanguage(language: AppLanguage): AppStrings = when (language) {

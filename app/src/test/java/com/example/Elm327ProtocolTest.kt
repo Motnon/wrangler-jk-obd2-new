@@ -107,7 +107,7 @@ class Elm327ProtocolTest {
         assertTrue(echoedFuel is Elm327Protocol.DecodedPid.FuelLevel)
         assertEquals((0x9A * 100f) / 255f, (echoedFuel as Elm327Protocol.DecodedPid.FuelLevel).percent, 0.1f)
 
-        // OBD Speed (010D) in KPH: stationary 0 KPH, CAN header, echo, and multi-ECU tolerance
+        // OBD Speed (010D) in KPH: stationary 0 KPH, CAN header, echo, 29-bit header, and merged multi-ECU tolerance
         assertEquals(
             Elm327Protocol.DecodedPid.Speed(0),
             Elm327Protocol.decodeMode01("41 0D 00", expectedPid = 0x0D)
@@ -117,12 +117,24 @@ class Elm327ProtocolTest {
             Elm327Protocol.decodeMode01("7E8 03 41 0D 64", expectedPid = 0x0D)
         )
         assertEquals(
+            Elm327Protocol.DecodedPid.Speed(110),
+            Elm327Protocol.decodeMode01("18DAF110 03 41 0D 6E", expectedPid = 0x0D)
+        )
+        assertEquals(
             Elm327Protocol.DecodedPid.Speed(72),
             Elm327Protocol.decodeMode01("010D\r41 0D 48\r>", expectedPid = 0x0D)
         )
         assertEquals(
             Elm327Protocol.DecodedPid.Speed(80),
             Elm327Protocol.decodeMode01("7E8 03 41 0D 50\r7E9 03 7F 01 11", expectedPid = 0x0D)
+        )
+        assertEquals(
+            Elm327Protocol.DecodedPid.Speed(80),
+            Elm327Protocol.decodeMode01("7E8 03 41 0D 50 7E9 03 7F 01 11", expectedPid = 0x0D)
+        )
+        assertEquals(
+            Elm327Protocol.DecodedPid.Speed(72),
+            Elm327Protocol.decodeMode01("7E9 03 7F 01 12 7E8 03 41 0D 48", expectedPid = 0x0D)
         )
     }
 
@@ -233,7 +245,8 @@ class Elm327ProtocolTest {
         assertTrue(WranglerModel.JL in codes["P20EE"]!!.models)
         assertTrue(WranglerModel.JL in codes["P0BBE"]!!.models)
         assertTrue(WranglerModel.JL in codes["U0140"]!!.models)
-        assertTrue(WranglerModel.JK in codes["C140F"]!!.models)
+        assertTrue(WranglerModel.JL in codes["C140F"]!!.models)
+        assertTrue(WranglerModel.JK in codes["C1020"]!!.models)
         assertEquals(JkSubsystem.ABS_CHASSIS, codes["C140F"]!!.subsystem)
     }
 }

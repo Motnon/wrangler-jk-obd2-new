@@ -20,8 +20,12 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.example.data.VehicleCacheRepository
 import com.example.obd.BluetoothDeviceItem
+import com.example.obd.CachedVehicleBinding
 import com.example.obd.ConnectionStatus
+import com.example.obd.DetectedVehicle
+import com.example.obd.DetectionSource
 import com.example.obd.DiagnosticReading
 import com.example.obd.DiagnosticScanEngine
 import com.example.obd.DiagnosticTestId
@@ -30,6 +34,10 @@ import com.example.obd.LiveTelemetry
 import com.example.obd.TerminalDirection
 import com.example.obd.TerminalEntry
 import com.example.obd.TransportType
+import com.example.obd.VehicleProfile
+import com.example.obd.VehicleProfileId
+import com.example.obd.VehicleProfileLoader
+import com.example.obd.VinDecoder
 import com.example.obd.VinInfo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -58,34 +66,45 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Manages Bluetooth runtime permissions (BLUETOOTH_CONNECT / BLUETOOTH_SCAN),
- * Classic SPP & BLE device discovery, and ELM327 OBD-II ECU communication.
+ * dual-mode Vgate iCar Pro discovery/linking (Classic SPP `ANDROID-VLINK` & BLE 4.0 `IOS-VLINK`),
+ * ELM327 initialization (`ATZ -> ATE0 -> ATL0 -> ATS0 -> ATH0 -> ATSP0`),
+ * and automatic vehicle detection + profile-driven OBD-II telemetry polling.
  */
-class BluetoothManager(private val context: Context) {
+class BluetoothManager(
+    private val context: Context,
+    private val vehicleCacheRepo: VehicleCacheRepository? = null
+) {
 
     companion object {
         private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
         private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
+        // Vgate iCar Pro BLE 4.0 (IOS-VLINK) uses 18F0/2AF1(write)/2AF0(notify) or FFF0/FFF2(write)/FFF1(notify)
+        private val VGATE_BLE_SERVICE_18F0: UUID = UUID.fromString("000018f0-0000-1000-8000-00805f9b34fb")
+        private val PREFERRED_WRITE_VGATE_2AF1: UUID = UUID.fromString("00002af1-0000-1000-8000-00805f9b34fb")
+        private val PREFERRED_NOTIFY_VGATE_2AF0: UUID = UUID.fromString("00002af0-0000-1000-8000-00805f9b34fb")
         private val PREFERRED_WRITE_FFF2: UUID = UUID.fromString("0000fff2-0000-1000-8000-00805f9b34fb")
         private val FALLBACK_WRITE_FFE1: UUID = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
 
         private const val INIT_COMMAND_TIMEOUT_MS = 8_000L
         private const val POLL_COMMAND_TIMEOUT_MS = 3_000L
 
-        private val ELM327_INIT_SEQUENCE = listOf(
-            "ATZ",    // Reset ELM327
-            "ATE0",   // Echo OFF
-            "ATL0",   // Linefeeds OFF
-            "ATS0",   // Spaces OFF
-            "ATH0",   // Headers OFF
-            "ATSP6",  // ISO 15765-4 CAN 11-bit 500kbps (Wrangler JK & JL)
-            "ATCAF1", // CAN Auto Formatting ON
-            "0100"    // Supported PIDs probe
+        // Universal ELM327 initialization sequence ending with ATSP0 (auto-detect all 9 OBD-II protocols)
+        internal val ELM327_INIT_SEQUENCE = listOf(
+            "ATZ",   // Reset ELM327
+            "ATE0",  // Echo OFF
+            "ATL0",  // Linefeeds OFF
+            "ATS0",  // Spaces OFF
+            "ATH0",  // Headers OFF
+            "ATSP0"  // Auto-detect protocol (CAN 11/29-bit, ISO9141-2, KWP2000, J1850 PWM/VPW)
         )
 
         private val ELM327_NAME_HINTS = listOf(
-            "OBD", "ELM", "VEEPEAK", "VGATE", "ICAR", "JSCAN", "OBDLINK", "SCANTOOL", "KONNWEI", "CARISTA"
+            "VLINK", "ANDROID-VLINK", "IOS-VLINK", "VGATE", "ICAR",
+            "OBD", "ELM", "VEEPEAK", "JSCAN", "OBDLINK", "SCANTOOL", "KONNWEI", "CARISTA"
         )
+
+        private val CORE_ALWAYS_POLL_COMMANDS = setOf("010C", "0105", "010D")
     }
 
     private data class PendingCccdWrite(
@@ -130,13 +149,32 @@ class BluetoothManager(private val context: Context) {
     private val _pendingDtcs = MutableStateFlow<List<String>>(emptyList())
     val pendingDtcs: StateFlow<List<String>> = _pendingDtcs.asStateFlow()
 
+    private val vinDecoder = VinDecoder(context)
+    private val profileLoader = VehicleProfileLoader(context)
+
     private val _vinInfo = MutableStateFlow<VinInfo?>(null)
     val vinInfo: StateFlow<VinInfo?> = _vinInfo.asStateFlow()
+
+    private val _detectedVehicle = MutableStateFlow<DetectedVehicle?>(null)
+    val detectedVehicle: StateFlow<DetectedVehicle?> = _detectedVehicle.asStateFlow()
+
+    private val _activeProfile = MutableStateFlow(profileLoader.loadProfile(VehicleProfileId.UNIVERSAL_OBD2))
+    val activeProfile: StateFlow<VehicleProfile> = _activeProfile.asStateFlow()
+
+    private val _supportedMode01Pids = MutableStateFlow<Set<Int>>(emptySet())
+    val supportedMode01Pids: StateFlow<Set<Int>> = _supportedMode01Pids.asStateFlow()
 
     private val _sgwBlockedEvent = MutableStateFlow(false)
     val sgwBlockedEvent: StateFlow<Boolean> = _sgwBlockedEvent.asStateFlow()
 
     private val unsupportedStandardCommands = mutableSetOf<String>()
+    private val commandNegativeStreaks = mutableMapOf<String, Int>()
+
+    @Volatile
+    private var manualProfileOverrideId: String = VehicleProfileId.AUTO
+
+    @Volatile
+    private var lastAutoDetectedVehicle: DetectedVehicle? = null
 
     private val _terminalLogs = MutableStateFlow<List<TerminalEntry>>(
         listOf(
@@ -144,7 +182,7 @@ class BluetoothManager(private val context: Context) {
                 id = 0L,
                 timestamp = timeFormat.format(Date()),
                 direction = TerminalDirection.INFO,
-                message = "ELM327 console ready. Pair Bluetooth OBD-II dongle to begin Wrangler JK/JL CAN-Bus session."
+                message = "ELM327 / Vgate iCar Pro console ready (SPP + BLE 4.0). Connect dongle for automatic vehicle detection."
             )
         )
     )
@@ -320,11 +358,12 @@ class BluetoothManager(private val context: Context) {
         }.getOrDefault(emptyList())
 
         _availableDevices.value = paired.sortedWith(
-            compareByDescending<BluetoothDeviceItem> { isLikelyElm327(it.name) }
+            compareByDescending<BluetoothDeviceItem> { it.isVgateAdapter }
+                .thenByDescending { isLikelyElm327(it.name) }
                 .thenBy { it.name }
         )
         if (!isBluetoothEnabled()) {
-            _statusMessage.value = "Turn on Bluetooth to connect your Wrangler JK ELM327 dongle"
+            _statusMessage.value = "Turn on Bluetooth to connect your Vgate iCar Pro / OBD-II adapter"
         }
     }
 
@@ -412,6 +451,44 @@ class BluetoothManager(private val context: Context) {
                 "Opening ${deviceItem.transportType.badge} link to ${deviceItem.name} (${deviceItem.address})"
             )
 
+            // Hydrate cached vehicle binding immediately on repeat connection while VIN re-verifies in background
+            val cachedBinding = vehicleCacheRepo?.getCachedBinding(deviceItem.address)
+            if (cachedBinding != null) {
+                val cachedProfileId = if (manualProfileOverrideId != VehicleProfileId.AUTO) {
+                    manualProfileOverrideId
+                } else {
+                    cachedBinding.profileId
+                }
+                val loadedProfile = profileLoader.loadProfile(cachedProfileId)
+                _activeProfile.value = loadedProfile
+                val decodedCached = cachedBinding.vin?.let {
+                    vinDecoder.decode(
+                        rawVin = it,
+                        protocolName = cachedBinding.protocolName,
+                        source = DetectionSource.CACHED_DEVICE
+                    )
+                }
+                _detectedVehicle.value = decodedCached?.copy(
+                    profileId = cachedProfileId,
+                    detectionSource = DetectionSource.CACHED_DEVICE
+                ) ?: DetectedVehicle(
+                    vin = cachedBinding.vin,
+                    make = cachedBinding.displayTitle,
+                    model = "",
+                    profileId = cachedProfileId,
+                    displayTitle = cachedBinding.displayTitle,
+                    protocolName = cachedBinding.protocolName,
+                    detectionSource = DetectionSource.CACHED_DEVICE
+                )
+                cachedBinding.vin?.let {
+                    _vinInfo.value = Elm327Protocol.decodeVinString(it)
+                }
+                appendTerminal(
+                    TerminalDirection.INFO,
+                    "Loaded cached profile '${cachedBinding.displayTitle}' (${loadedProfile.shortBadge}); verifying VIN in background…"
+                )
+            }
+
             val remoteDevice = runCatching { adapter.getRemoteDevice(deviceItem.address) }.getOrNull()
             if (remoteDevice == null) {
                 failConnection("Invalid Bluetooth address ${deviceItem.address}")
@@ -430,24 +507,29 @@ class BluetoothManager(private val context: Context) {
             }
 
             _connectionStatus.value = ConnectionStatus.INITIALIZING
-            _statusMessage.value = "Initializing ELM327 & Wrangler CAN-Bus (ATSP6)…"
+            _statusMessage.value = "Initializing ELM327 & auto-detecting OBD-II protocol (ATSP0)…"
             val initOk = initializeElm327()
             if (!initOk) {
-                failConnection("Adapter did not respond to ATZ/ATSP6 initialization")
+                failConnection("Adapter did not respond to ATZ/ATSP0 initialization")
                 return@launch
             }
 
             _connectionStatus.value = ConnectionStatus.CONNECTED
-            _statusMessage.value = "ECU Link Active — ${deviceItem.name}"
             unsupportedStandardCommands.clear()
+            commandNegativeStreaks.clear()
             _sgwBlockedEvent.value = false
+
+            // Automatic 4-step vehicle detection waterfall immediately after ATSP0
+            runVehicleDetectionWaterfall(deviceItem)
+
+            val detectedTitle = _detectedVehicle.value?.displayTitle ?: deviceItem.name
+            _statusMessage.value = "$detectedTitle — ${deviceItem.name}"
             publishDiagnosticReadings()
             appendTerminal(
                 TerminalDirection.INFO,
-                "ELM327 initialized (ISO 15765-4 CAN 11-bit 500kbps). Streaming Wrangler PIDs."
+                "Active vehicle: $detectedTitle [Profile: ${_activeProfile.value.name}]"
             )
 
-            queryVinInternal()
             readDtcsInternal()
             startPollingLoop()
         }
@@ -489,6 +571,10 @@ class BluetoothManager(private val context: Context) {
             _connectedDevice.value = null
             _statusMessage.value = "Disconnected from OBD-II adapter"
             _telemetry.value = LiveTelemetry()
+            _vinInfo.value = null
+            _detectedVehicle.value = null
+            lastAutoDetectedVehicle = null
+            _supportedMode01Pids.value = emptySet()
             _diagnosticCycleCount.value = 0L
             unsupportedStandardCommands.clear()
             _sgwBlockedEvent.value = false
@@ -564,10 +650,15 @@ class BluetoothManager(private val context: Context) {
                 }
 
                 val allCharacteristics = gatt.services.orEmpty().flatMap { it.characteristics.orEmpty() }
+                val vgateServiceChars = gatt.getService(VGATE_BLE_SERVICE_18F0)?.characteristics.orEmpty()
 
-                // 1. Select write characteristic: prefer FFF2 -> FFE1 -> any writeable characteristic
+                // 1. Select write characteristic: prefer Vgate IOS-VLINK 2AF1 (service 18F0) -> FFF2 -> FFE1 -> any writable
                 val selectedWrite =
-                    allCharacteristics.firstOrNull {
+                    vgateServiceChars.firstOrNull {
+                        it.uuid == PREFERRED_WRITE_VGATE_2AF1 && isWritable(it)
+                    } ?: allCharacteristics.firstOrNull {
+                        it.uuid == PREFERRED_WRITE_VGATE_2AF1 && isWritable(it)
+                    } ?: allCharacteristics.firstOrNull {
                         it.uuid == PREFERRED_WRITE_FFF2 && isWritable(it)
                     } ?: allCharacteristics.firstOrNull {
                         it.uuid == FALLBACK_WRITE_FFE1 && isWritable(it)
@@ -583,10 +674,13 @@ class BluetoothManager(private val context: Context) {
                 bleWriteChar = selectedWrite
                 appendTerminal(TerminalDirection.INFO, "BLE TX characteristic selected: ${selectedWrite.uuid}")
 
-                // 2. Subscribe to EVERY notify or indicate characteristic across ALL discovered services (Vgate fix)
+                // 2. Prioritize Vgate 2AF0 notify char first, then subscribe to EVERY notify/indicate char across services
+                val prioritizedChars = allCharacteristics.sortedByDescending {
+                    it.uuid == PREFERRED_NOTIFY_VGATE_2AF0
+                }
                 synchronized(pendingCccdQueue) {
                     pendingCccdQueue.clear()
-                    for (char in allCharacteristics) {
+                    for (char in prioritizedChars) {
                         val hasNotify = (char.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0
                         val hasIndicate = (char.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0
                         if (!hasNotify && !hasIndicate) continue
@@ -700,10 +794,11 @@ class BluetoothManager(private val context: Context) {
             if (rxBuffer.contains(">")) {
                 completedResponse = rxBuffer
                     .toString()
-                    .replace("\r", " ")
-                    .replace("\n", " ")
+                    .replace("\r\n", "\n")
+                    .replace("\r", "\n")
                     .replace(">", "")
-                    .replace(Regex("""\s+"""), " ")
+                    .lines()
+                    .joinToString("\n") { it.replace(Regex("""[ \t]+"""), " ").trim() }
                     .trim()
                 rxBuffer.clear()
             }
@@ -713,38 +808,167 @@ class BluetoothManager(private val context: Context) {
         }
     }
 
+    fun setManualProfileOverride(profileId: String) {
+        manualProfileOverrideId = profileId
+        if (profileId == VehicleProfileId.AUTO) {
+            val auto = lastAutoDetectedVehicle
+            if (auto != null) {
+                _activeProfile.value = profileLoader.loadProfile(auto.profileId)
+                _detectedVehicle.value = auto
+            }
+        } else {
+            val loaded = profileLoader.loadProfile(profileId)
+            _activeProfile.value = loaded
+            _detectedVehicle.update { current ->
+                current?.copy(
+                    profileId = loaded.id,
+                    detectionSource = DetectionSource.MANUAL_OVERRIDE
+                ) ?: DetectedVehicle(
+                    make = loaded.make,
+                    model = loaded.name,
+                    profileId = loaded.id,
+                    displayTitle = loaded.name,
+                    detectionSource = DetectionSource.MANUAL_OVERRIDE
+                )
+            }
+        }
+    }
+
     private suspend fun initializeElm327(): Boolean {
         var anyOk = false
-        var supportedPidsOk = false
         for (cmd in ELM327_INIT_SEQUENCE) {
-            val timeout = INIT_COMMAND_TIMEOUT_MS
-            val resp = sendCommandRaw(cmd, timeoutMs = timeout, logTerminal = true)
+            val resp = sendCommandRaw(cmd, timeoutMs = INIT_COMMAND_TIMEOUT_MS, logTerminal = true)
             if (cmd == "ATZ" && resp != null &&
                 (resp.contains("ELM", ignoreCase = true) || resp.contains("OK", ignoreCase = true))
             ) {
                 anyOk = true
             } else if (resp != null && !Elm327Protocol.isErrorResponse(resp) && resp.isNotBlank()) {
                 anyOk = true
-                if (cmd == "0100" && !Elm327Protocol.isNegativeResponse(resp)) {
-                    supportedPidsOk = true
-                }
             }
-            delay(150L)
-        }
-        if (!supportedPidsOk) {
-            // Fallback to Auto Protocol if fixed 11-bit 500kbps CAN probe failed
-            sendCommandRaw("ATSP0", timeoutMs = INIT_COMMAND_TIMEOUT_MS, logTerminal = true)
-            delay(150L)
-            val fallbackResp = sendCommandRaw("0100", timeoutMs = INIT_COMMAND_TIMEOUT_MS, logTerminal = true)
-            if (fallbackResp != null &&
-                !Elm327Protocol.isErrorResponse(fallbackResp) &&
-                !Elm327Protocol.isNegativeResponse(fallbackResp) &&
-                fallbackResp.isNotBlank()
-            ) {
-                anyOk = true
-            }
+            delay(120L)
         }
         return anyOk
+    }
+
+    /**
+     * Automatic 4-step vehicle detection waterfall run immediately after ATSP0:
+     * 1) `0902` standard VIN (ISO-TP / KWP / ISO9141)
+     * 2) `22F190` UDS VIN fallback (BMW / VAG / EVs)
+     * 3) `0100`/`0120`/`0140`/`0160` supported PID bitmask + `0904` Calibration ID + `ATDPN` protocol
+     * 4) Universal OBD-II fallback (+ manual profile override if selected) & local caching.
+     */
+    private suspend fun runVehicleDetectionWaterfall(deviceItem: BluetoothDeviceItem) {
+        _statusMessage.value = "Detecting protocol & ECU capabilities…"
+        val supportedPids = querySupportedMode01PidsChain()
+        _supportedMode01Pids.value = supportedPids
+        if (supportedPids.isNotEmpty()) {
+            diagnosticScanEngine.seedSupportedMode01Pids(supportedPids)
+            appendTerminal(
+                TerminalDirection.INFO,
+                "ECU supported Mode 01 PIDs detected: ${supportedPids.size} PIDs"
+            )
+        }
+
+        val atdpnResp = sendCommandRaw("ATDPN", POLL_COMMAND_TIMEOUT_MS, logTerminal = true)
+        val protocolPair = atdpnResp?.let { Elm327Protocol.decodeProtocolNumberResponse(it) }
+        val protoCode = protocolPair?.first
+        val protoName = protocolPair?.second
+        if (protoName != null) {
+            appendTerminal(TerminalDirection.INFO, "Active OBD-II protocol ($protoCode): $protoName")
+        }
+
+        // Step 1: Standard Mode 09 PID 02 VIN
+        _statusMessage.value = "Reading Vehicle VIN (0902)…"
+        val vin0902Resp = sendCommandRaw("0902", INIT_COMMAND_TIMEOUT_MS, logTerminal = true)
+        val vin0902 = vin0902Resp?.let { Elm327Protocol.extractStandardVinString(it) }
+
+        var resolvedVehicle: DetectedVehicle? = vin0902?.let { vin ->
+            vinDecoder.decode(
+                rawVin = vin,
+                protocolCode = protoCode,
+                protocolName = protoName,
+                supportedPids = supportedPids,
+                source = DetectionSource.VIN_STANDARD_0902
+            )
+        }
+
+        // Step 2: UDS 22F190 VIN Fallback
+        if (resolvedVehicle == null) {
+            _statusMessage.value = "Trying UDS VIN fallback (22F190)…"
+            val udsResp = sendCommandRaw("22F190", INIT_COMMAND_TIMEOUT_MS, logTerminal = true)
+            val vinUds = udsResp?.let { Elm327Protocol.extractUdsVinString(it) }
+            if (vinUds != null) {
+                resolvedVehicle = vinDecoder.decode(
+                    rawVin = vinUds,
+                    protocolCode = protoCode,
+                    protocolName = protoName,
+                    supportedPids = supportedPids,
+                    source = DetectionSource.VIN_UDS_22F190
+                )
+            }
+        }
+
+        // Step 3: ECU Fingerprinting Fallback (0904 Calibration ID + 0100 + ATDPN)
+        var calId: String? = null
+        if (resolvedVehicle == null) {
+            _statusMessage.value = "Fingerprinting ECU (0904 / 0100 / ATDPN)…"
+            val calResp = sendCommandRaw("0904", INIT_COMMAND_TIMEOUT_MS, logTerminal = true)
+            calId = calResp?.let { Elm327Protocol.decodeCalibrationIdResponse(it) }
+            resolvedVehicle = vinDecoder.fingerprintVehicle(
+                protocolCode = protoCode,
+                protocolName = protoName,
+                calibrationId = calId,
+                supportedPids = supportedPids
+            )
+        }
+
+        lastAutoDetectedVehicle = resolvedVehicle
+
+        // Step 4: Apply manual override if configured, otherwise apply auto-detected profile
+        val overrideId = manualProfileOverrideId
+        val finalVehicle = if (overrideId != VehicleProfileId.AUTO) {
+            resolvedVehicle.copy(
+                profileId = overrideId,
+                detectionSource = DetectionSource.MANUAL_OVERRIDE
+            )
+        } else {
+            resolvedVehicle
+        }
+
+        val profile = profileLoader.loadProfile(finalVehicle.profileId)
+        _activeProfile.value = profile
+        _detectedVehicle.value = finalVehicle
+        finalVehicle.vin?.let { vin ->
+            _vinInfo.value = Elm327Protocol.decodeVinString(vin)
+        }
+
+        vehicleCacheRepo?.saveBinding(
+            CachedVehicleBinding(
+                deviceAddress = deviceItem.address,
+                deviceName = deviceItem.name,
+                vin = finalVehicle.vin,
+                profileId = finalVehicle.profileId,
+                displayTitle = finalVehicle.displayTitle,
+                protocolName = finalVehicle.protocolName ?: calId,
+                lastConnectedMs = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private suspend fun querySupportedMode01PidsChain(): Set<Int> {
+        val supported = linkedSetOf<Int>()
+        val probeBases = listOf(0x00, 0x20, 0x40, 0x60)
+        for (base in probeBases) {
+            val cmd = "01" + base.toString(16).uppercase().padStart(2, '0')
+            val resp = sendCommandRaw(cmd, INIT_COMMAND_TIMEOUT_MS, logTerminal = (base == 0x00)) ?: break
+            val block = Elm327Protocol.decodeSupportedPidBitmask(resp, basePid = base)
+            if (block.isEmpty()) break
+            supported.addAll(block)
+            val nextMaskPid = base + 0x20
+            if (nextMaskPid !in block) break
+            delay(50L)
+        }
+        return supported
     }
 
     fun updateDiagnosticSettings(speedFactor: Float, coolantWarnC: Int) {
@@ -772,6 +996,8 @@ class BluetoothManager(private val context: Context) {
     }
 
     fun reprobeUnsupportedDiagnostics() {
+        unsupportedStandardCommands.clear()
+        commandNegativeStreaks.clear()
         diagnosticScanEngine.clearUnsupportedCache()
         _isDiagnosticScanPaused.value = false
         publishDiagnosticReadings()
@@ -819,38 +1045,56 @@ class BluetoothManager(private val context: Context) {
                     }
                     delay(120L)
                 } else {
-                    applyPid(sendCommandRaw("010C", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0C)
-                    applyPid(sendCommandRaw("0105", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x05)
-                    applyPid(sendCommandRaw("010D", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0D)
+                    val profile = _activeProfile.value
+                    val activeProfilePids = profileLoader.resolveActivePids(profile, _supportedMode01Pids.value)
+                    val activeCmdSet = activeProfilePids.map { it.cmd }.toSet()
+                    val allowAllCore = activeCmdSet.isEmpty() || !profile.useSupportedPidMaskFiltering
+
+                    // Core primary gauges (RPM, Coolant, Vehicle Speed 010D) always remain active
+                    // so transient CAN noise or partial bitmasks never blind the speedometer.
+                    pollOptionalStandardPid("010C", expectedPid = 0x0C)
+                    pollOptionalStandardPid("0105", expectedPid = 0x05)
+                    pollOptionalStandardPid("010D", expectedPid = 0x0D)
 
                     if (tick % 2 == 0) {
-                        applyPid(sendCommandRaw("012F", POLL_COMMAND_TIMEOUT_MS, logTerminal = (tick == 0)), expectedPid = 0x2F)
-                        val voltResp = sendCommandRaw("ATRV", POLL_COMMAND_TIMEOUT_MS, logTerminal = false)
-                        voltResp?.let { Elm327Protocol.parseVoltageResponse(it) }?.let { v ->
-                            _telemetry.update { it.copy(batteryVolts = v, lastUpdatedMs = System.currentTimeMillis()) }
-                            diagnosticScanEngine.applyDecodedPid(Elm327Protocol.DecodedPid.ControlModuleVoltage(v))
+                        if (allowAllCore || "012F" in activeCmdSet) {
+                            pollOptionalStandardPid("012F", expectedPid = 0x2F)
                         }
-                        applyPid(sendCommandRaw("0111", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x11)
-                        applyPid(sendCommandRaw("0104", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x04)
+                        if ("0142" in activeCmdSet) {
+                            pollOptionalStandardPid("0142", expectedPid = 0x42)
+                        } else {
+                            val voltResp = sendCommandRaw("ATRV", POLL_COMMAND_TIMEOUT_MS, logTerminal = false)
+                            voltResp?.let { Elm327Protocol.parseVoltageResponse(it) }?.let { v ->
+                                _telemetry.update { it.copy(batteryVolts = v, lastUpdatedMs = System.currentTimeMillis()) }
+                                diagnosticScanEngine.applyDecodedPid(Elm327Protocol.DecodedPid.ControlModuleVoltage(v))
+                            }
+                        }
+                        if (allowAllCore || "0111" in activeCmdSet) {
+                            pollOptionalStandardPid("0111", expectedPid = 0x11)
+                        }
+                        if (allowAllCore || "0104" in activeCmdSet) {
+                            pollOptionalStandardPid("0104", expectedPid = 0x04)
+                        }
                     }
+
                     if (tick % 4 == 0) {
-                        applyPid(sendCommandRaw("010F", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0F)
-                        applyPid(sendCommandRaw("010B", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x0B)
-                        applyPid(sendCommandRaw("0106", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x06)
-                        applyPid(sendCommandRaw("0107", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x07)
-                        applyPid(sendCommandRaw("0146", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x46)
-                        applyPid(sendCommandRaw("0101", POLL_COMMAND_TIMEOUT_MS, logTerminal = false), expectedPid = 0x01)
-                        pollOptionalStandardPid("0133", expectedPid = 0x33)
-                        pollOptionalStandardPid("015C", expectedPid = 0x5C)
-                        pollOptionalStandardPid("0123", expectedPid = 0x23)
-                        pollOptionalStandardPid("0170", expectedPid = 0x70)
-                        pollOptionalStandardPid("015B", expectedPid = 0x5B)
-                        if (tick == 0) {
-                            pollOptionalStandardPid("0151", expectedPid = 0x51)
+                        val fastHandled = setOf("010C", "0105", "010D", "012F", "0142", "ATRV", "0111", "0104")
+                        val secondaryPids = activeProfilePids.filter { it.cmd !in fastHandled }
+                        for (pid in secondaryPids) {
+                            if (_connectionStatus.value != ConnectionStatus.CONNECTED) break
+                            if (pid.cmd == "0151" && tick > 0) continue
+                            if (pid.cmd.startsWith("01") && pid.cmd.length == 4) {
+                                val pidNum = pid.cmd.substring(2, 4).toIntOrNull(16)
+                                if (pidNum != null) {
+                                    pollOptionalStandardPid(pid.cmd, expectedPid = pidNum)
+                                }
+                            } else if (pid.cmd.startsWith("22")) {
+                                pollOptionalExtendedCommand(pid.cmd)
+                            }
                         }
-                    }
-                    if (tick == 4 && _vinInfo.value == null) {
-                        queryVinInternal()
+                        if (secondaryPids.none { it.cmd == "0101" }) {
+                            pollOptionalStandardPid("0101", expectedPid = 0x01)
+                        }
                     }
                     publishDiagnosticReadings()
                     tick++
@@ -863,11 +1107,37 @@ class BluetoothManager(private val context: Context) {
     private suspend fun pollOptionalStandardPid(cmd: String, expectedPid: Int) {
         if (cmd in unsupportedStandardCommands) return
         val raw = sendCommandRaw(cmd, POLL_COMMAND_TIMEOUT_MS, logTerminal = false) ?: return
-        if (Elm327Protocol.isNegativeResponse(raw)) {
-            unsupportedStandardCommands.add(cmd)
+        val isCore = cmd in CORE_ALWAYS_POLL_COMMANDS
+        if (Elm327Protocol.isErrorResponse(raw)) {
+            if (!isCore) {
+                val neg = (commandNegativeStreaks["err_$cmd"] ?: 0) + 1
+                commandNegativeStreaks["err_$cmd"] = neg
+                if (neg >= 2) unsupportedStandardCommands.add(cmd)
+            }
             return
         }
-        applyPid(raw, expectedPid = expectedPid)
+        if (Elm327Protocol.isNegativeResponse(raw)) {
+            val neg = (commandNegativeStreaks[cmd] ?: 0) + 1
+            commandNegativeStreaks[cmd] = neg
+            val limit = if (isCore) 5 else 2
+            if (neg >= limit) {
+                unsupportedStandardCommands.add(cmd)
+            }
+            return
+        }
+        val decoded = Elm327Protocol.decodeMode01(raw, expectedPid = expectedPid) ?: return
+        commandNegativeStreaks.remove(cmd)
+        commandNegativeStreaks.remove("err_$cmd")
+        diagnosticScanEngine.applyDecodedPid(decoded)
+        applyDecodedToTelemetry(decoded)
+    }
+
+    private suspend fun pollOptionalExtendedCommand(cmd: String) {
+        if (cmd in unsupportedStandardCommands) return
+        val raw = sendCommandRaw(cmd, POLL_COMMAND_TIMEOUT_MS, logTerminal = false) ?: return
+        if (Elm327Protocol.isNegativeResponse(raw) || Elm327Protocol.isErrorResponse(raw)) {
+            unsupportedStandardCommands.add(cmd)
+        }
     }
 
     private fun applyPid(raw: String?, expectedPid: Int? = null) {
@@ -927,10 +1197,28 @@ class BluetoothManager(private val context: Context) {
             }
             val resp = sendCommandRaw(trimmed, timeoutMs = timeout, logTerminal = true)
             if (resp != null) {
-                if (trimmed == "0902") {
-                    Elm327Protocol.decodeVinResponse(resp)?.let { _vinInfo.value = it }
-                } else {
-                    applyPid(resp)
+                when {
+                    trimmed == "0902" -> {
+                        Elm327Protocol.extractStandardVinString(resp)?.let { vin ->
+                            _vinInfo.value = Elm327Protocol.decodeVinString(vin)
+                            val detected = vinDecoder.decode(vin, source = DetectionSource.VIN_STANDARD_0902)
+                            if (detected != null) {
+                                _detectedVehicle.value = detected
+                                _activeProfile.value = profileLoader.loadProfile(detected.profileId)
+                            }
+                        }
+                    }
+                    trimmed == "22F190" -> {
+                        Elm327Protocol.extractUdsVinString(resp)?.let { vin ->
+                            _vinInfo.value = Elm327Protocol.decodeVinString(vin)
+                            val detected = vinDecoder.decode(vin, source = DetectionSource.VIN_UDS_22F190)
+                            if (detected != null) {
+                                _detectedVehicle.value = detected
+                                _activeProfile.value = profileLoader.loadProfile(detected.profileId)
+                            }
+                        }
+                    }
+                    else -> applyPid(resp)
                 }
             }
         }
@@ -973,13 +1261,6 @@ class BluetoothManager(private val context: Context) {
 
     fun consumeSgwBlockedEvent() {
         _sgwBlockedEvent.value = false
-    }
-
-    private suspend fun queryVinInternal() {
-        val resp = sendCommandRaw("0902", INIT_COMMAND_TIMEOUT_MS, logTerminal = true) ?: return
-        Elm327Protocol.decodeVinResponse(resp)?.let {
-            _vinInfo.value = it
-        }
     }
 
     @SuppressLint("MissingPermission")
@@ -1071,10 +1352,11 @@ class BluetoothManager(private val context: Context) {
             }
         }
         return sb.toString()
-            .replace("\r", " ")
-            .replace("\n", " ")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
             .replace(">", "")
-            .replace(Regex("""\s+"""), " ")
+            .lines()
+            .joinToString("\n") { it.replace(Regex("""[ \t]+"""), " ").trim() }
             .trim()
     }
 
@@ -1087,7 +1369,8 @@ class BluetoothManager(private val context: Context) {
         _availableDevices.update { current ->
             val filtered = current.filterNot { it.address == item.address }
             (filtered + item).sortedWith(
-                compareByDescending<BluetoothDeviceItem> { isLikelyElm327(it.name) }
+                compareByDescending<BluetoothDeviceItem> { it.isVgateAdapter }
+                    .thenByDescending { isLikelyElm327(it.name) }
                     .thenByDescending { it.isPaired }
                     .thenBy { it.name }
             )
