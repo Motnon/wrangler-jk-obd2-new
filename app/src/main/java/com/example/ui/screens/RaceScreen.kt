@@ -55,7 +55,9 @@ import com.example.obd.ConnectionStatus
 import com.example.obd.DetectedVehicle
 import com.example.obd.JkEngineProfile
 import com.example.obd.LiveTelemetry
+import androidx.compose.runtime.key
 import com.example.obd.RaceLayoutDefaults
+import com.example.obd.RaceLayoutSolver
 import com.example.obd.RaceWindowGeometry
 import com.example.obd.RaceWindowId
 import com.example.obd.RealSpeedSource
@@ -453,6 +455,8 @@ fun RaceScreen(
             val maxBottomDp = windowMap.values.maxOfOrNull { it.yDp + it.heightDp } ?: 1052f
             val totalBoardHeightDp = maxOf(viewportHeightDp.value, maxBottomDp + 48f).dp
 
+            var dragBaseline by remember { mutableStateOf<Map<RaceWindowId, RaceWindowGeometry>?>(null) }
+
             val bringToFront: (RaceWindowId) -> Unit = { id ->
                 val current = windowMap[id]
                 if (current != null) {
@@ -461,33 +465,53 @@ fun RaceScreen(
                         windowMap[id] = current.copy(zOrder = maxZ + 1)
                     }
                 }
+                if (dragBaseline == null) {
+                    dragBaseline = windowMap.toMap()
+                }
             }
 
             val onMoveDelta: (RaceWindowId, Float, Float) -> Unit = { id, dxPx, dyPx ->
                 val g = windowMap[id]
                 if (g != null) {
+                    val base = dragBaseline ?: windowMap.toMap().also { dragBaseline = it }
                     val dxFrac = dxPx / boardWidthPx
                     val dyDp = with(density) { dyPx.toDp().value }
                     val newX = (g.xFraction + dxFrac).coerceIn(0f, (1f - g.widthFraction).coerceAtLeast(0f))
                     val newY = (g.yDp + dyDp).coerceIn(0f, 2200f)
-                    windowMap[id] = g.copy(xFraction = newX, yDp = newY)
+                    val moved = g.copy(xFraction = newX, yDp = newY)
+                    val resolved = RaceLayoutSolver.resolveOverlaps(
+                        baseline = base,
+                        activeId = id,
+                        activeGeometry = moved,
+                        boardWidthDp = boardWidthDp.value
+                    )
+                    windowMap.putAll(resolved)
                 }
             }
 
             val onResizeDelta: (RaceWindowId, Float, Float) -> Unit = { id, dxPx, dyPx ->
                 val g = windowMap[id]
                 if (g != null) {
+                    val base = dragBaseline ?: windowMap.toMap().also { dragBaseline = it }
                     val dwFrac = dxPx / boardWidthPx
                     val dhDp = with(density) { dyPx.toDp().value }
                     val minWFrac = (g.minWidthDp / boardWidthDp.value).coerceIn(0.12f, 0.90f)
                     val maxWFrac = (1f - g.xFraction).coerceAtLeast(minWFrac)
                     val newW = (g.widthFraction + dwFrac).coerceIn(minWFrac, maxWFrac)
                     val newH = (g.heightDp + dhDp).coerceIn(g.minHeightDp, g.maxHeightDp)
-                    windowMap[id] = g.copy(widthFraction = newW, heightDp = newH)
+                    val resized = g.copy(widthFraction = newW, heightDp = newH)
+                    val resolved = RaceLayoutSolver.resolveOverlaps(
+                        baseline = base,
+                        activeId = id,
+                        activeGeometry = resized,
+                        boardWidthDp = boardWidthDp.value
+                    )
+                    windowMap.putAll(resolved)
                 }
             }
 
             val commitGesture: () -> Unit = {
+                dragBaseline = null
                 onSaveRaceLayout(windowMap.toMap())
             }
 
@@ -509,16 +533,17 @@ fun RaceScreen(
                     ) {
                         val orderedEntries = windowMap.entries.sortedBy { it.value.zOrder }
                         for ((id, geom) in orderedEntries) {
-                            AdjustableRaceWindow(
-                                windowId = id,
-                                geometry = geom,
-                                boardWidthPx = boardWidthPx,
-                                isLocked = isLocked,
-                                onBringToFront = bringToFront,
-                                onMoveDelta = onMoveDelta,
-                                onResizeDelta = onResizeDelta,
-                                onCommitGesture = commitGesture
-                            ) {
+                            key(id) {
+                                AdjustableRaceWindow(
+                                    windowId = id,
+                                    geometry = geom,
+                                    boardWidthPx = boardWidthPx,
+                                    isLocked = isLocked,
+                                    onBringToFront = bringToFront,
+                                    onMoveDelta = onMoveDelta,
+                                    onResizeDelta = onResizeDelta,
+                                    onCommitGesture = commitGesture
+                                ) {
                                 when (id) {
                                     RaceWindowId.SHIFT_LIGHTS -> {
                                         RaceShiftLightBar(
@@ -640,6 +665,7 @@ fun RaceScreen(
                                         modifier = Modifier.fillMaxSize()
                                     )
                                 }
+                            }
                             }
                         }
                     }

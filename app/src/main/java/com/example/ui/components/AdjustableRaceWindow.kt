@@ -1,5 +1,8 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -14,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +39,7 @@ import com.example.obd.RaceWindowGeometry
 import com.example.obd.RaceWindowId
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalRacePalette
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
@@ -60,8 +65,32 @@ fun AdjustableRaceWindow(
     var isDraggingResize by remember { mutableStateOf(false) }
     val isActive = isDraggingMove || isDraggingResize
 
-    val xPx = (geometry.xFraction * boardWidthPx).roundToInt()
-    val yPx = with(density) { geometry.yDp.dp.toPx() }.roundToInt()
+    val animX = remember { Animatable(geometry.xFraction) }
+    val animY = remember { Animatable(geometry.yDp) }
+    LaunchedEffect(geometry.xFraction, geometry.yDp, isActive) {
+        if (isActive) {
+            animX.snapTo(geometry.xFraction)
+            animY.snapTo(geometry.yDp)
+        } else {
+            launch {
+                animX.animateTo(
+                    targetValue = geometry.xFraction,
+                    animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium)
+                )
+            }
+            launch {
+                animY.animateTo(
+                    targetValue = geometry.yDp,
+                    animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium)
+                )
+            }
+        }
+    }
+
+    val displayXFrac = if (isActive) geometry.xFraction else animX.value
+    val displayYDp = if (isActive) geometry.yDp else animY.value
+    val xPx = (displayXFrac * boardWidthPx).roundToInt()
+    val yPx = with(density) { displayYDp.dp.toPx() }.roundToInt()
     val widthDp = with(density) { (geometry.widthFraction * boardWidthPx).toDp() }
     val heightDp = geometry.heightDp.dp
 

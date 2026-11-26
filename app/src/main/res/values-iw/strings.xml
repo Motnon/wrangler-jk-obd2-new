@@ -21,7 +21,7 @@
     <string name="race_layout_unlock">שחרר</string>
     <string name="race_layout_reset">איפוס</string>
     <string name="race_hint_locked">נעול • החלק לגלילה למטה או למעלה</string>
-    <string name="race_hint_unlocked">גרור חלון להזזה • פינה ↘ לשינוי גודל</string>
+    <string name="race_hint_unlocked">גרור להזזה • פינה ↘ לשינוי גודל • סידור אוטומטי ללא חפיפה</string>
     <string name="cd_hero_banner">ג\'יפ רנגלר JK על רכס הרים בשעת דמדומים</string>
     <string name="cd_connect_bluetooth">חבר מתאם בלוטות\' OBD-II</string>
     <string name="cd_clear_codes">נקה קודי תקלה</string>
