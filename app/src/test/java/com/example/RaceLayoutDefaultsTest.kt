@@ -107,5 +107,79 @@ class RaceLayoutDefaultsTest {
 
         assertFalse(RaceLayoutSolver.hasAnyOverlap(resolved, boardWidthDp = 400f))
         assertEquals(0.36f, resolved[RaceWindowId.FUEL_BAR]!!.widthFraction, 0.001f)
+        // Speed dial fits beside widened Fuel bar, while Coolant bar wraps cleanly below
+        assertEquals(8f, resolved[RaceWindowId.SPEED_DIAL]!!.yDp, 0.01f)
+        assertTrue(resolved[RaceWindowId.COOLANT_BAR]!!.yDp >= 256f)
+    }
+
+    @Test
+    fun `moving fuel bar between speed dial and coolant bar auto-organizes the 3-box line cleanly`() {
+        val baseline = RaceLayoutDefaults.defaultLayout()
+        // Drag Fuel bar rightward onto the right half of Speed dial with slight Y wobble (18dp)
+        val movedFuel = baseline[RaceWindowId.FUEL_BAR]!!.copy(xFraction = 0.56f, yDp = 18f)
+
+        val resolved = RaceLayoutSolver.resolveOverlaps(
+            baseline = baseline,
+            activeId = RaceWindowId.FUEL_BAR,
+            activeGeometry = movedFuel,
+            boardWidthDp = 400f,
+            snapActiveToRow = true
+        )
+
+        assertFalse(RaceLayoutSolver.hasAnyOverlap(resolved, boardWidthDp = 400f))
+        val speed = resolved[RaceWindowId.SPEED_DIAL]!!
+        val fuel = resolved[RaceWindowId.FUEL_BAR]!!
+        val coolant = resolved[RaceWindowId.COOLANT_BAR]!!
+
+        // All 3 boxes stay aligned on y = 8dp in the new left-to-right order [SPEED, FUEL, COOLANT]
+        assertEquals(8f, speed.yDp, 0.01f)
+        assertEquals(8f, fuel.yDp, 0.01f)
+        assertEquals(8f, coolant.yDp, 0.01f)
+        assertTrue(speed.xFraction + speed.widthFraction < fuel.xFraction)
+        assertTrue(fuel.xFraction + fuel.widthFraction < coolant.xFraction)
+    }
+
+    @Test
+    fun `dragging rpm pod to far right reorders 3-box pod line and snaps to clean row alignment`() {
+        val baseline = RaceLayoutDefaults.defaultLayout()
+        val movedRpm = baseline[RaceWindowId.RPM_POD]!!.copy(xFraction = 0.72f, yDp = 432f)
+
+        val resolved = RaceLayoutSolver.resolveOverlaps(
+            baseline = baseline,
+            activeId = RaceWindowId.RPM_POD,
+            activeGeometry = movedRpm,
+            boardWidthDp = 400f,
+            snapActiveToRow = true
+        )
+
+        assertFalse(RaceLayoutSolver.hasAnyOverlap(resolved, boardWidthDp = 400f))
+        val map = resolved[RaceWindowId.MAP_POD]!!
+        val load = resolved[RaceWindowId.LOAD_POD]!!
+        val rpm = resolved[RaceWindowId.RPM_POD]!!
+
+        assertEquals(418f, map.yDp, 0.01f)
+        assertEquals(418f, load.yDp, 0.01f)
+        assertEquals(418f, rpm.yDp, 0.01f)
+        assertTrue(map.xFraction < load.xFraction && load.xFraction < rpm.xFraction)
+    }
+
+    @Test
+    fun `moving throttle bar down compacts below rows upward so no dead vertical gap remains`() {
+        val baseline = RaceLayoutDefaults.defaultLayout()
+        val movedThrottle = baseline[RaceWindowId.THROTTLE_BAR]!!.copy(yDp = 700f)
+
+        val resolved = RaceLayoutSolver.resolveOverlaps(
+            baseline = baseline,
+            activeId = RaceWindowId.THROTTLE_BAR,
+            activeGeometry = movedThrottle,
+            boardWidthDp = 400f,
+            snapActiveToRow = true
+        )
+
+        assertFalse(RaceLayoutSolver.hasAnyOverlap(resolved, boardWidthDp = 400f))
+        // RPM/MAP/LOAD pods compact up cleanly right below Shift Lights (bottom 336 + 8 = 344)
+        assertEquals(344f, resolved[RaceWindowId.RPM_POD]!!.yDp, 0.01f)
+        assertEquals(344f, resolved[RaceWindowId.MAP_POD]!!.yDp, 0.01f)
+        assertEquals(344f, resolved[RaceWindowId.LOAD_POD]!!.yDp, 0.01f)
     }
 }

@@ -105,6 +105,7 @@ import com.example.obd.RealSpeedSource
 import com.example.obd.RigPreferences
 import com.example.obd.TerminalEntry
 import com.example.obd.TrailSensorState
+import com.example.obd.TripOdometerState
 import com.example.obd.UnitSystem
 import com.example.obd.VehicleProfile
 import com.example.obd.VinInfo
@@ -205,7 +206,10 @@ fun AutomotiveInfotainmentShell(
     onDeleteScanRecord: (Long) -> Unit,
     onSelectProfileOverride: (String) -> Unit,
     onForgetCachedAdapter: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dtcLookupMap: Map<String, DtcCodeInfo> = emptyMap(),
+    tripOdometer: TripOdometerState = TripOdometerState(),
+    onResetTripOdometer: () -> Unit = {}
 ) {
     val strings = LocalAppStrings.current
     val palette = LocalRacePalette.current
@@ -468,7 +472,9 @@ fun AutomotiveInfotainmentShell(
                     onSetRaceLayoutLocked = onSetRaceLayoutLocked,
                     detectedVehicle = detectedVehicle,
                     activeProfile = activeProfile,
-                    gpsState = gpsState
+                    gpsState = gpsState,
+                    tripOdometer = tripOdometer,
+                    onResetTripOdometer = onResetTripOdometer
                 )
 
                 DriveTab.PIDS -> LiveDiagnosticsScreen(
@@ -505,7 +511,8 @@ fun AutomotiveInfotainmentShell(
                     onScanEcu = onScanEcu,
                     onClearEcuCodes = onClearEcuCodes,
                     onSaveSnapshot = onSaveSnapshot,
-                    onOpenBluetoothSheet = onOpenBluetoothSheet
+                    onOpenBluetoothSheet = onOpenBluetoothSheet,
+                    dtcLookupMap = dtcLookupMap
                 )
 
                 DriveTab.TERM -> TerminalScreen(

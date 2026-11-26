@@ -5,7 +5,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,10 +16,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Route
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -27,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -40,10 +46,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.obd.TripOdometerState
+import com.example.obd.TripOdometerTracker
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ChakraPetchFontFamily
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalRacePalette
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -422,6 +431,166 @@ private fun RaceMetricTile(
                     fontSize = 12.sp,
                     maxLines = 1,
                     color = palette.textPrimary
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Draggable ECU-derived trip odometer GUI card displaying accumulated trip distance,
+ * live ECU vehicle speed (PID 010D), average moving speed, active drive time, and reset action.
+ */
+@Composable
+fun RaceTripOdometerCard(
+    tripState: TripOdometerState,
+    onResetTrip: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalRacePalette.current
+    val strings = LocalAppStrings.current
+    val isLightDay = palette.boardBg.luminance() > 0.4f
+    val statusColor = if (tripState.isAccumulating) palette.zone2 else palette.textSecondary
+    val formattedDist = TripOdometerTracker.formatDistanceKm(tripState.tripDistanceKm)
+    val ecuSpeedText = tripState.currentEcuSpeedKph?.let { "$it ${strings.speedUnitKph}" } ?: "--"
+    val avgSpeedText = if (tripState.activeMovingSeconds > 0L) {
+        String.format(Locale.US, "%.1f", tripState.averageSpeedKph)
+    } else {
+        "--"
+    }
+    val timeText = TripOdometerTracker.formatElapsedHms(tripState.activeMovingSeconds)
+
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        shape = RoundedCornerShape(16.dp),
+        color = palette.surface,
+        border = BorderStroke(
+            width = if (tripState.isAccumulating) 1.4.dp else 1.dp,
+            color = if (tripState.isAccumulating) {
+                palette.zone2.copy(alpha = if (isLightDay) 0.72f else 0.48f)
+            } else {
+                palette.bezelBorder
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Route,
+                        contentDescription = null,
+                        tint = palette.zone1,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = strings.tripOdometerTitle,
+                        fontFamily = ChakraPetchFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.8.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = palette.zone1
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = statusColor.copy(alpha = if (isLightDay) 0.16f else 0.14f),
+                        border = BorderStroke(1.dp, statusColor.copy(alpha = 0.55f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(statusColor)
+                            )
+                            Text(
+                                text = if (tripState.isAccumulating) {
+                                    strings.tripEcuLiveBadge
+                                } else {
+                                    strings.tripStandbyBadge
+                                },
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 8.sp,
+                                color = statusColor
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = formattedDist,
+                        fontFamily = ChakraPetchFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
+                        color = palette.textPrimary,
+                        modifier = Modifier.testTag("race_trip_distance_text")
+                    )
+                    Text(
+                        text = strings.tripDistanceUnitKm,
+                        fontFamily = JetBrainsMonoFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = palette.zone2
+                    )
+                    IconButton(
+                        onClick = onResetTrip,
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("race_trip_reset_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = strings.tripResetCd,
+                            tint = palette.zone1
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                RaceMetricTile(
+                    label = strings.tripEcuSpeedLabel,
+                    value = ecuSpeedText,
+                    accentColor = palette.zone1,
+                    modifier = Modifier.weight(1f)
+                )
+                RaceMetricTile(
+                    label = strings.tripAvgSpeedLabel,
+                    value = avgSpeedText,
+                    accentColor = palette.zone3,
+                    modifier = Modifier.weight(1f)
+                )
+                RaceMetricTile(
+                    label = strings.tripTimeLabel,
+                    value = timeText,
+                    accentColor = palette.zone2,
+                    modifier = Modifier.weight(1f)
                 )
             }
         }

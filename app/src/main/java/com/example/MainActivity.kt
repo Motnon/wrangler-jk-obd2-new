@@ -226,11 +226,13 @@ fun WranglerObdApp(
     val selectedDtcModelFilter by viewModel.selectedDtcModelFilter.collectAsStateWithLifecycle()
     val selectedSubsystem by viewModel.selectedSubsystem.collectAsStateWithLifecycle()
     val catalogCodes by viewModel.filteredCatalogCodes.collectAsStateWithLifecycle()
+    val dtcLookupMap by viewModel.dtcLookupMap.collectAsStateWithLifecycle()
     val appliedDiagnosticTests by viewModel.appliedDiagnosticTests.collectAsStateWithLifecycle()
     val diagnosticReadings by viewModel.diagnosticReadings.collectAsStateWithLifecycle()
     val isDiagnosticScanPaused by viewModel.isDiagnosticScanPaused.collectAsStateWithLifecycle()
     val diagnosticCycleCount by viewModel.diagnosticCycleCount.collectAsStateWithLifecycle()
     val feedbackMessage by viewModel.uiFeedbackMessage.collectAsStateWithLifecycle()
+    val tripOdometer by viewModel.tripOdometerState.collectAsStateWithLifecycle()
 
     var showBluetoothSheet by remember { mutableStateOf(false) }
     var showUiStyleSheet by remember { mutableStateOf(false) }
@@ -412,7 +414,8 @@ fun WranglerObdApp(
                 onResetInclinometerTare = viewModel::resetInclinometerTare,
                 onDeleteScanRecord = viewModel::deleteScanRecord,
                 onSelectProfileOverride = viewModel::setManualProfileOverride,
-                onForgetCachedAdapter = viewModel::forgetCachedAdapter
+                onForgetCachedAdapter = viewModel::forgetCachedAdapter,
+                dtcLookupMap = dtcLookupMap
             )
         }
 
@@ -485,7 +488,10 @@ fun WranglerObdApp(
                 onResetInclinometerTare = viewModel::resetInclinometerTare,
                 onDeleteScanRecord = viewModel::deleteScanRecord,
                 onSelectProfileOverride = viewModel::setManualProfileOverride,
-                onForgetCachedAdapter = viewModel::forgetCachedAdapter
+                onForgetCachedAdapter = viewModel::forgetCachedAdapter,
+                dtcLookupMap = dtcLookupMap,
+                tripOdometer = tripOdometer,
+                onResetTripOdometer = viewModel::resetTripOdometer
             )
         }
 
@@ -658,7 +664,9 @@ fun WranglerObdApp(
                             onSetRaceLayoutLocked = viewModel::setRaceLayoutLocked,
                             detectedVehicle = detectedVehicle,
                             activeProfile = activeProfile,
-                            gpsState = gpsState
+                            gpsState = gpsState,
+                            tripOdometer = tripOdometer,
+                            onResetTripOdometer = viewModel::resetTripOdometer
                         )
                     }
                     composable(ROUTE_DIAGNOSTICS) {
@@ -714,7 +722,8 @@ fun WranglerObdApp(
                             onScanEcu = viewModel::readDtcsFromEcu,
                             onClearEcuCodes = viewModel::clearDtcsOnEcu,
                             onSaveSnapshot = viewModel::saveScanSnapshot,
-                            onOpenBluetoothSheet = { showBluetoothSheet = true }
+                            onOpenBluetoothSheet = { showBluetoothSheet = true },
+                            dtcLookupMap = dtcLookupMap
                         )
                     }
                     composable(ROUTE_TERMINAL) {

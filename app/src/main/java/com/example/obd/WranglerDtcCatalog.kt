@@ -622,6 +622,158 @@ object WranglerDtcCatalog {
             description = "Internal ABS ECU hardware fault or severe under-voltage event during cranking.",
             trailGuidance = "Verify charging voltage (>13.6V running) and clear codes after battery check.",
             models = both
+        ),
+
+        // --- Additional Jeep Wrangler JK Specific Codes ---
+        DtcCodeInfo(
+            code = "P0340",
+            title = "Camshaft Position Sensor A Circuit (Bank 1)",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.CRITICAL,
+            affectedEngines = "JK 3.8L V6 & 3.6L Pentastar",
+            description = "Missing or erratic camshaft position signal causing extended cranking, stalling, or limp mode on Wrangler JK.",
+            trailGuidance = "Inspect cam sensor harness on passenger cylinder head and verify sensor bolt tightness.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P0344",
+            title = "Camshaft Position Sensor A Intermittent (Bank 1)",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.WARNING,
+            affectedEngines = "JK 3.6L Pentastar & 3.8L V6",
+            description = "Intermittent cam sensor signal from damaged wiring near alternator bracket, dirty reluctor wheel, or failing Hall-effect sensor.",
+            trailGuidance = "Check cam sensor pigtail insulation and oil level; replace with OEM Mopar cam sensor.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P0335",
+            title = "Crankshaft Position Sensor A Circuit",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.CRITICAL,
+            affectedEngines = "JK 3.8L V6 & 3.6L Pentastar",
+            description = "Crankshaft position sensor dropout — very common Wrangler JK cause of sudden hot stall and no-tachometer cranking.",
+            trailGuidance = "If JK stalls hot and restarts after cooling 15 min, CKP sensor heat-soak failure is likely.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P0339",
+            title = "Crankshaft Position Sensor A Circuit Intermittent",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.WARNING,
+            affectedEngines = "JK 3.6L / 3.8L V6",
+            description = "Momentary loss of crankshaft tooth synchronization from mud/water in bellhousing connector or worn CKP sensor.",
+            trailGuidance = "Clean lower bellhousing CKP connector on passenger side after water crossings.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P0507",
+            title = "Idle Air Control / ETC RPM Higher Than Expected",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.WARNING,
+            affectedEngines = "JK 3.8L V6 & 3.6L Pentastar",
+            description = "Idle speed persistently above target due to carboned electronic throttle body bore, split PCV hose, or intake plenum leak.",
+            trailGuidance = "Clean throttle body blade and inspect vacuum hoses around upper intake manifold.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P0108",
+            title = "Manifold Absolute Pressure (MAP) Circuit High",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.WARNING,
+            affectedEngines = "JK 3.8L V6 & 3.6L Pentastar",
+            description = "MAP sensor reading stuck near max voltage (~5V) due to broken vacuum reference, failed sensor, or wiring open.",
+            trailGuidance = "Watch Intake MAP (kPa) live on Cockpit; unplug/re-seat MAP connector on intake manifold.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P0455",
+            title = "EVAP System Large Leak Detected",
+            subsystem = JkSubsystem.EVAP,
+            severity = DtcSeverity.INFO,
+            affectedEngines = "All Wrangler JK (2007–2018)",
+            description = "Gross EVAP system vapor leak — classic Wrangler JK issue from torn EVAP canister hose behind rear axle or missing fuel cap.",
+            trailGuidance = "Visually inspect charcoal canister and hard/rubber hoses above rear track bar mount.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P0562",
+            title = "System Voltage Low",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.WARNING,
+            affectedEngines = "All Wrangler JK",
+            description = "PCM sensed battery bus below ~10.8V while engine running — weak alternator, failing battery cell, or corroded TIPM main cable.",
+            trailGuidance = "Check live ATRV battery volts; turn off off-road light bars and winch until voltage stabilizes >13.2V.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P2096",
+            title = "Post Catalyst Fuel Trim System Too Lean (Bank 1)",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.WARNING,
+            affectedEngines = "JK 3.8L V6 & 3.6L Pentastar",
+            description = "Downstream O2 sensor detects lean exhaust after catalyst — classic Wrangler JK 3.8L cracked passenger exhaust manifold.",
+            trailGuidance = "Listen for cold-start exhaust tick on passenger manifold; monitor STFT B1 on PID Scan.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P2098",
+            title = "Post Catalyst Fuel Trim System Too Lean (Bank 2)",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.WARNING,
+            affectedEngines = "JK 3.8L V6 & 3.6L Pentastar",
+            description = "Driver-side post-cat lean trim from cracked exhaust manifold, leaking Y-pipe flange gasket, or aging downstream O2 sensor.",
+            trailGuidance = "Inspect driver-side Y-pipe flange bolts and O2 harness clearance.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P0325",
+            title = "Knock Sensor 1 Circuit (Bank 1)",
+            subsystem = JkSubsystem.POWERTRAIN,
+            severity = DtcSeverity.WARNING,
+            affectedEngines = "JK 3.6L Pentastar & 3.8L V6",
+            description = "Knock sensor open/shorted or rodent/heat damage to valley harness under lower intake manifold.",
+            trailGuidance = "ECU retards ignition timing slightly as safeguard; check valley wiring when servicing oil cooler.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "P0715",
+            title = "Input / Turbine Speed Sensor A Circuit (W5A580)",
+            subsystem = JkSubsystem.TRANSMISSION,
+            severity = DtcSeverity.CRITICAL,
+            affectedEngines = "JK 2012–2018 W5A580 5-Speed Auto",
+            description = "NAG1/W5A580 conductor plate speed sensor dropout locking transmission in 2nd-gear limp mode.",
+            trailGuidance = "Inspect 13-pin transmission bulkhead connector for ATF wicking; cycle key to reset limp temporarily.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "C1014",
+            title = "Left Front Wheel Speed Comparative Performance",
+            subsystem = JkSubsystem.ABS_CHASSIS,
+            severity = DtcSeverity.WARNING,
+            affectedEngines = "Wrangler JK Dana 30 / Dana 44 Front Axle",
+            description = "Front left ABS wheel speed signal erratic due to worn unit bearing hub, rusted tone ring, or mud-jammed sensor tip.",
+            trailGuidance = "Wash mud out of front knuckle/hub area and check unit bearing play.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "U110C",
+            title = "Lost Fuel Level Message (TIPM to PCM)",
+            subsystem = JkSubsystem.TIPM_NETWORK,
+            severity = DtcSeverity.INFO,
+            affectedEngines = "All Wrangler JK (2007–2018)",
+            description = "PCM stopped receiving fuel tank level percentage over CAN from the JK Totally Integrated Power Module (TIPM).",
+            trailGuidance = "Check fuel pump sender harness above rear tank and inspect TIPM M25/M30 fuses.",
+            models = jkOnly
+        ),
+        DtcCodeInfo(
+            code = "B1630",
+            title = "Right Low Beam Control Circuit High (TIPM)",
+            subsystem = JkSubsystem.TIPM_NETWORK,
+            severity = DtcSeverity.INFO,
+            affectedEngines = "JK with LED Headlight Conversion",
+            description = "TIPM open-load fault on passenger headlight driver caused by aftermarket LED lights without PWM anti-flicker load.",
+            trailGuidance = "Install anti-flicker CANbus decoder harness or flash TIPM LED mode.",
+            models = jkOnly
         )
     )
 }

@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.obd.AppLanguage
@@ -19,6 +21,7 @@ import com.example.obd.UnitSystem
 import com.example.obd.VehicleProfileId
 import com.example.obd.WranglerModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.util.Locale
 
@@ -49,6 +52,8 @@ class RigPreferencesRepository(private val context: Context) {
         val WRANGLER_MODEL = stringPreferencesKey("wrangler_model")
         val SELECTED_PROFILE_OVERRIDE_ID = stringPreferencesKey("selected_profile_override_id")
         val UI_STYLE = stringPreferencesKey("ui_style")
+        val TRIP_DISTANCE_KM = doublePreferencesKey("trip_distance_km")
+        val TRIP_MOVING_SECONDS = longPreferencesKey("trip_moving_seconds")
     }
 
     val preferencesFlow: Flow<RigPreferences> = context.rigDataStore.data.map { prefs ->
@@ -225,6 +230,20 @@ class RigPreferencesRepository(private val context: Context) {
     suspend fun setUiStyle(uiStyle: AppUiStyle) {
         context.rigDataStore.edit { prefs ->
             prefs[Keys.UI_STYLE] = uiStyle.name
+        }
+    }
+
+    suspend fun readTripOdometer(): Pair<Double, Long> {
+        val prefs = context.rigDataStore.data.first()
+        val km = (prefs[Keys.TRIP_DISTANCE_KM] ?: 0.0).coerceAtLeast(0.0)
+        val sec = (prefs[Keys.TRIP_MOVING_SECONDS] ?: 0L).coerceAtLeast(0L)
+        return km to sec
+    }
+
+    suspend fun saveTripOdometer(distanceKm: Double, movingSeconds: Long) {
+        context.rigDataStore.edit { prefs ->
+            prefs[Keys.TRIP_DISTANCE_KM] = distanceKm.coerceAtLeast(0.0)
+            prefs[Keys.TRIP_MOVING_SECONDS] = movingSeconds.coerceAtLeast(0L)
         }
     }
 }

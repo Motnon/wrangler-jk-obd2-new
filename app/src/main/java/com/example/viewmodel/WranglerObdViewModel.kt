@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bluetooth.BluetoothManager
+import com.example.data.DtcRepository
 import com.example.data.JkObdDatabase
 import com.example.data.RigPreferencesRepository
 import com.example.data.ScanHistoryRepository
@@ -30,6 +31,8 @@ import com.example.obd.RaceWindowId
 import com.example.obd.RigPreferences
 import com.example.obd.TerminalEntry
 import com.example.obd.TrailSensorState
+import com.example.obd.TripOdometerState
+import com.example.obd.TripOdometerTracker
 import com.example.obd.UnitSystem
 import com.example.obd.VehicleProfile
 import com.example.obd.VehicleProfileId
@@ -45,13 +48,16 @@ import com.example.sensors.PhoneBatteryState
 import com.example.sensors.SolarSchedule
 import com.example.sensors.SolarTimeCalculator
 import com.example.sensors.TrailSensorManager
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -64,9 +70,9 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     private val batteryMonitor = PhoneBatteryMonitor(application.applicationContext)
     private val gpsSpeedManager = GpsSpeedManager(application.applicationContext)
     private val rigPrefsRepo = RigPreferencesRepository(application.applicationContext)
-    private val scanHistoryRepo = ScanHistoryRepository(
-        JkObdDatabase.getInstance(application.applicationContext).scanRecordDao()
-    )
+    private val database = JkObdDatabase.getInstance(application.applicationContext)
+    private val scanHistoryRepo = ScanHistoryRepository(database.scanRecordDao())
+    private val dtcRepository = DtcRepository(database.dtcCodeDao())
 
     val bluetoothPermissionsGranted: StateFlow<Boolean> = bluetoothManager.permissionsGranted
     val connectionStatus: StateFlow<ConnectionStatus> = bluetoothManager.connectionStatus
@@ -97,6 +103,10 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
             initialValue = emptyMap()
         )
 
+    private val tripOdometerTracker = TripOdometerTracker()
+    private val _tripOdometerState = MutableStateFlow(TripOdometerState())
+    val tripOdometerState: StateFlow<TripOdometerState> = _tripOdometerState.asStateFlow()
+
     val rigPreferences: StateFlow<RigPreferences> = rigPrefsRepo.preferencesFlow
         .stateIn(
             scope = viewModelScope,
@@ -105,6 +115,9 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
         )
 
     init {
+        viewModelScope.launch {
+            dtcRepository.ensurePrepopulated()
+        }
         viewModelScope.launch {
             rigPrefsRepo.preferencesFlow.collect { prefs ->
                 bluetoothManager.setManualProfileOverride(prefs.selectedProfileOverrideId)
@@ -132,6 +145,50 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
                         he = "שער האבטחה JL (SGW) חסם את הניקוי (Mode 04). נדרש כבל עוקף 12+8 לניקוי תקלות."
                     )
                     bluetoothManager.consumeSgwBlockedEvent()
+                }
+            }
+        }
+        viewModelScope.launch {
+            val (savedKm, savedSec) = rigPrefsRepo.readTripOdometer()
+            _tripOdometerState.value = tripOdometerTracker.restore(savedKm, savedSec)
+
+            var lastSavedKm = savedKm
+            var lastSavedAtMs = System.currentTimeMillis()
+            var lastProcessedTimestamp = -1L
+            var lastProcessedStatus: ConnectionStatus? = null
+
+            combine(
+                connectionStatus,
+                telemetry,
+                rigPreferences,
+                activeProfile
+            ) { status, tel, prefs, profile ->
+                val factor = effectiveSpeedFactor(prefs, profile)
+                Triple(status, tel, factor)
+            }.collect { (status, tel, factor) ->
+                val connected = status == ConnectionStatus.CONNECTED
+                if (tel.lastUpdatedMs == lastProcessedTimestamp && status == lastProcessedStatus) {
+                    return@collect
+                }
+                lastProcessedTimestamp = tel.lastUpdatedMs
+                lastProcessedStatus = status
+
+                val updated = tripOdometerTracker.onEcuSpeedSample(
+                    rawEcuSpeedKmh = tel.speedKmh,
+                    speedFactor = factor,
+                    timestampMs = tel.lastUpdatedMs,
+                    isConnected = connected
+                )
+                _tripOdometerState.value = updated
+
+                val now = System.currentTimeMillis()
+                val distanceDelta = kotlin.math.abs(updated.tripDistanceKm - lastSavedKm)
+                if ((distanceDelta >= 0.01 && now - lastSavedAtMs >= 3_000L) ||
+                    (!connected && distanceDelta >= 0.001)
+                ) {
+                    lastSavedKm = updated.tripDistanceKm
+                    lastSavedAtMs = now
+                    rigPrefsRepo.saveTripOdometer(updated.tripDistanceKm, updated.activeMovingSeconds)
                 }
             }
         }
@@ -186,27 +243,36 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     private val _selectedDtcModelFilter = MutableStateFlow<WranglerModel?>(null)
     val selectedDtcModelFilter: StateFlow<WranglerModel?> = _selectedDtcModelFilter.asStateFlow()
 
+    val dtcLookupMap: StateFlow<Map<String, DtcCodeInfo>> = dtcRepository.observeAllDtcs()
+        .map { rows -> rows.associateBy { it.code } }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = WranglerDtcCatalog.allCodes.associateBy { it.code }
+        )
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     val filteredCatalogCodes: StateFlow<List<DtcCodeInfo>> = combine(
         _dtcSearchQuery,
         _selectedSubsystem,
         _selectedDtcModelFilter
     ) { query, subsystem, modelFilter ->
-        val q = query.trim().uppercase()
-        WranglerDtcCatalog.allCodes.filter { info ->
-            val matchesModel = modelFilter == null || modelFilter in info.models
-            val matchesSubsystem = subsystem == JkSubsystem.ALL || info.subsystem == subsystem
-            val matchesQuery = q.isEmpty() ||
-                info.code.contains(q) ||
-                info.title.uppercase().contains(q) ||
-                info.description.uppercase().contains(q) ||
-                info.affectedEngines.uppercase().contains(q)
-            matchesModel && matchesSubsystem && matchesQuery
-        }
+        Triple(query, subsystem, modelFilter)
+    }.flatMapLatest { (query, subsystem, modelFilter) ->
+        dtcRepository.searchDtcs(
+            query = query,
+            subsystem = subsystem,
+            modelFilter = modelFilter
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = WranglerDtcCatalog.allCodes
     )
+
+    suspend fun lookupDtcOffline(code: String): DtcCodeInfo {
+        return dtcRepository.lookupOffline(code, rigPreferences.value.wranglerModel)
+    }
 
     private val _uiFeedbackMessage = MutableStateFlow<String?>(null)
     val uiFeedbackMessage: StateFlow<String?> = _uiFeedbackMessage.asStateFlow()
@@ -558,6 +624,21 @@ class WranglerObdViewModel(application: Application) : AndroidViewModel(applicat
     fun setRaceLayoutLocked(locked: Boolean) {
         viewModelScope.launch {
             rigPrefsRepo.setRaceLayoutLocked(locked)
+        }
+    }
+
+    fun resetTripOdometer() {
+        val currentTs = telemetry.value.lastUpdatedMs.takeIf {
+            connectionStatus.value == ConnectionStatus.CONNECTED && it > 0L
+        }
+        val resetState = tripOdometerTracker.reset(currentTs)
+        _tripOdometerState.value = resetState
+        viewModelScope.launch {
+            rigPrefsRepo.saveTripOdometer(0.0, 0L)
+            _uiFeedbackMessage.value = msg(
+                en = "Trip odometer reset to 0.00 km.",
+                he = "מד המרחק לנסיעה אופס ל-0.00 ק\"מ."
+            )
         }
     }
 

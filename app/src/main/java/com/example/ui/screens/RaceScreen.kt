@@ -63,6 +63,7 @@ import com.example.obd.RaceWindowId
 import com.example.obd.RealSpeedSource
 import com.example.obd.RigPreferences
 import com.example.obd.TrailSensorState
+import com.example.obd.TripOdometerState
 import com.example.obd.UnitSystem
 import com.example.obd.VehicleProfile
 import com.example.obd.VehicleProfileId
@@ -77,6 +78,7 @@ import com.example.ui.components.RaceSessionPeaksCard
 import com.example.ui.components.RaceShiftLightBar
 import com.example.ui.components.RaceSpeedometerDial
 import com.example.ui.components.RaceThrottleBarCard
+import com.example.ui.components.RaceTripOdometerCard
 import com.example.ui.components.TrailInclinometerCard
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ChakraPetchFontFamily
@@ -105,7 +107,9 @@ fun RaceScreen(
     modifier: Modifier = Modifier,
     detectedVehicle: DetectedVehicle? = null,
     activeProfile: VehicleProfile? = null,
-    gpsState: GpsTelemetryState = GpsTelemetryState()
+    gpsState: GpsTelemetryState = GpsTelemetryState(),
+    tripOdometer: TripOdometerState = TripOdometerState(),
+    onResetTripOdometer: () -> Unit = {}
 ) {
     val palette = LocalRacePalette.current
     val strings = LocalAppStrings.current
@@ -456,6 +460,7 @@ fun RaceScreen(
             val totalBoardHeightDp = maxOf(viewportHeightDp.value, maxBottomDp + 48f).dp
 
             var dragBaseline by remember { mutableStateOf<Map<RaceWindowId, RaceWindowGeometry>?>(null) }
+            var activeGestureId by remember { mutableStateOf<RaceWindowId?>(null) }
 
             val bringToFront: (RaceWindowId) -> Unit = { id ->
                 val current = windowMap[id]
@@ -465,6 +470,7 @@ fun RaceScreen(
                         windowMap[id] = current.copy(zOrder = maxZ + 1)
                     }
                 }
+                activeGestureId = id
                 if (dragBaseline == null) {
                     dragBaseline = windowMap.toMap()
                 }
@@ -473,6 +479,7 @@ fun RaceScreen(
             val onMoveDelta: (RaceWindowId, Float, Float) -> Unit = { id, dxPx, dyPx ->
                 val g = windowMap[id]
                 if (g != null) {
+                    activeGestureId = id
                     val base = dragBaseline ?: windowMap.toMap().also { dragBaseline = it }
                     val dxFrac = dxPx / boardWidthPx
                     val dyDp = with(density) { dyPx.toDp().value }
@@ -483,7 +490,8 @@ fun RaceScreen(
                         baseline = base,
                         activeId = id,
                         activeGeometry = moved,
-                        boardWidthDp = boardWidthDp.value
+                        boardWidthDp = boardWidthDp.value,
+                        snapActiveToRow = false
                     )
                     windowMap.putAll(resolved)
                 }
@@ -492,6 +500,7 @@ fun RaceScreen(
             val onResizeDelta: (RaceWindowId, Float, Float) -> Unit = { id, dxPx, dyPx ->
                 val g = windowMap[id]
                 if (g != null) {
+                    activeGestureId = id
                     val base = dragBaseline ?: windowMap.toMap().also { dragBaseline = it }
                     val dwFrac = dxPx / boardWidthPx
                     val dhDp = with(density) { dyPx.toDp().value }
@@ -504,14 +513,29 @@ fun RaceScreen(
                         baseline = base,
                         activeId = id,
                         activeGeometry = resized,
-                        boardWidthDp = boardWidthDp.value
+                        boardWidthDp = boardWidthDp.value,
+                        snapActiveToRow = false
                     )
                     windowMap.putAll(resolved)
                 }
             }
 
             val commitGesture: () -> Unit = {
+                val id = activeGestureId
+                val base = dragBaseline
+                val current = id?.let { windowMap[it] }
+                if (id != null && base != null && current != null) {
+                    val finalized = RaceLayoutSolver.resolveOverlaps(
+                        baseline = base,
+                        activeId = id,
+                        activeGeometry = current,
+                        boardWidthDp = boardWidthDp.value,
+                        snapActiveToRow = true
+                    )
+                    windowMap.putAll(finalized)
+                }
                 dragBaseline = null
+                activeGestureId = null
                 onSaveRaceLayout(windowMap.toMap())
             }
 
@@ -653,6 +677,14 @@ fun RaceScreen(
                                             peakSpeedKph = calibratedSpeedKph
                                         },
                                         modifier = Modifier.testTag("race_peaks_card")
+                                    )
+                                }
+
+                                RaceWindowId.TRIP_ODOMETER -> {
+                                    RaceTripOdometerCard(
+                                        tripState = tripOdometer,
+                                        onResetTrip = onResetTripOdometer,
+                                        modifier = Modifier.testTag("race_trip_odometer_card")
                                     )
                                 }
 

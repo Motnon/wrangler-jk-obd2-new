@@ -192,7 +192,8 @@ fun AvionicsHudShell(
     onDeleteScanRecord: (Long) -> Unit,
     onSelectProfileOverride: (String) -> Unit,
     onForgetCachedAdapter: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dtcLookupMap: Map<String, DtcCodeInfo> = emptyMap()
 ) {
     val strings = LocalAppStrings.current
     val palette = LocalRacePalette.current
@@ -416,6 +417,7 @@ fun AvionicsHudShell(
                         onClearEcuCodes = onClearEcuCodes,
                         onSaveSnapshot = onSaveSnapshot,
                         onOpenBluetoothSheet = onOpenBluetoothSheet,
+                        dtcLookupMap = dtcLookupMap,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(bottom = 82.dp)

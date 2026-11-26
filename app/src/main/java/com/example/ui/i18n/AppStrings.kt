@@ -41,6 +41,14 @@ data class AppStrings(
     val intakeAirLabel: String,
     val fuelTrimLabel: String,
     val vinPrefix: String,
+    val tripOdometerTitle: String,
+    val tripDistanceUnitKm: String,
+    val tripEcuLiveBadge: String,
+    val tripStandbyBadge: String,
+    val tripResetCd: String,
+    val tripEcuSpeedLabel: String,
+    val tripAvgSpeedLabel: String,
+    val tripTimeLabel: String,
     // Cockpit & Inclinometer
     val cockpitEngineRpm: String,
     val cockpitCoolantTemp: String,
@@ -529,7 +537,15 @@ data class AppStrings(
             driveHealthAttention = "ECU ATTENTION",
             driveOpenRaceCluster = "Custom Race Gauges",
             driveOpenDiagnostics = "50-PID Monitor",
-            driveOpenScanner = "Fault Scanner"
+            driveOpenScanner = "Fault Scanner",
+            tripOdometerTitle = "ECU TRIP ODOMETER",
+            tripDistanceUnitKm = "KM",
+            tripEcuLiveBadge = "ECU LIVE",
+            tripStandbyBadge = "STANDBY",
+            tripResetCd = "Reset trip odometer",
+            tripEcuSpeedLabel = "ECU SPD",
+            tripAvgSpeedLabel = "AVG SPD",
+            tripTimeLabel = "TIME"
         )
 
         val Hebrew = AppStrings(
@@ -720,7 +736,15 @@ data class AppStrings(
             driveHealthAttention = "נדרשת בדיקת ECU",
             driveOpenRaceCluster = "שעוני מרוץ",
             driveOpenDiagnostics = "סריקת 50 PID",
-            driveOpenScanner = "סורק תקלות"
+            driveOpenScanner = "סורק תקלות",
+            tripOdometerTitle = "מד מרחק נסיעה (ECU)",
+            tripDistanceUnitKm = "ק\"מ",
+            tripEcuLiveBadge = "ECU חי",
+            tripStandbyBadge = "המתנה",
+            tripResetCd = "אפס מד מרחק נסיעה",
+            tripEcuSpeedLabel = "מהירות ECU",
+            tripAvgSpeedLabel = "ממוצע",
+            tripTimeLabel = "זמן"
         )
 
         fun forLanguage(language: AppLanguage): AppStrings = when (language) {

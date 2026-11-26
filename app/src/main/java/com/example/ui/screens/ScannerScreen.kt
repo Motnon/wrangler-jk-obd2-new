@@ -84,7 +84,8 @@ fun ScannerScreen(
     onClearEcuCodes: () -> Unit,
     onSaveSnapshot: (String) -> Unit,
     onOpenBluetoothSheet: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dtcLookupMap: Map<String, DtcCodeInfo> = emptyMap()
 ) {
     val strings = LocalAppStrings.current
     var showClearConfirmDialog by remember { mutableStateOf(false) }
@@ -327,8 +328,9 @@ fun ScannerScreen(
                     )
 
                     activeDtcs.forEach { code ->
-                        val info = remember(code, wranglerModel) {
-                            JkDiagnosticLibrary.lookupCode(code, wranglerModel)
+                        val info = remember(code, wranglerModel, dtcLookupMap) {
+                            dtcLookupMap[code.trim().uppercase()]
+                                ?: JkDiagnosticLibrary.lookupCode(code, wranglerModel)
                         }
                         DtcCodeCard(
                             info = info,
@@ -340,8 +342,9 @@ fun ScannerScreen(
                         )
                     }
                     pendingDtcs.forEach { code ->
-                        val info = remember(code, wranglerModel) {
-                            JkDiagnosticLibrary.lookupCode(code, wranglerModel)
+                        val info = remember(code, wranglerModel, dtcLookupMap) {
+                            dtcLookupMap[code.trim().uppercase()]
+                                ?: JkDiagnosticLibrary.lookupCode(code, wranglerModel)
                         }
                         DtcCodeCard(
                             info = info,
